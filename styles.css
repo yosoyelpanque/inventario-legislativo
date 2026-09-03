@@ -159,6 +159,35 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .user-row span, .note-row span, .profile-row span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .active-user { border-left: 4px solid var(--jade); background: #f4fcf8; }
 .tag { display: inline-flex; min-height: 22px; align-items: center; padding: 0 7px; border-radius: 999px; color: var(--green-800); background: #eaf4f0; font-size: 10px; font-weight: 800; }
+.field-hint, .form-tip { display: block; margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.form-tip { margin: 0; padding: 10px 12px; border-left: 3px solid var(--copper); background: #fffcf5; }
+.user-card { align-items: flex-start; }
+.user-identity { display: flex; min-width: 0; align-items: flex-start; gap: 11px; }
+.user-avatar { display: grid; flex: 0 0 auto; width: 35px; height: 35px; place-items: center; border-radius: 50%; color: white !important; background: var(--green-800); font-size: 11px !important; font-weight: 800; }
+.user-identity > div { min-width: 0; }
+.user-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
+.location-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.location-chip { display: inline-flex !important; align-items: center; gap: 4px; margin: 0 !important; padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--green-800) !important; background: #fbfdfc; font-size: 10px !important; font-weight: 700; }
+.location-chip svg { width: 11px; height: 11px; }
+.location-chip.muted { color: var(--muted) !important; }
+.photo-manager { display: flex; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--line); background: #fbfdfc; }
+.photo-manager p { max-width: 460px; margin: 4px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.photo-manager .btn + .btn { margin-left: 6px; }
+.profile-photo, .location-thumb { display: grid; overflow: hidden; place-items: center; color: var(--green-800); background: var(--jade-pale); }
+.profile-photo { width: 62px; height: 62px; flex: 0 0 auto; border-radius: 50%; font-size: 17px; font-weight: 800; }
+.profile-photo img { width: 100%; height: 100%; object-fit: cover; }
+.managed-locations { margin-top: 21px; padding-top: 19px; border-top: 1px solid var(--line); }
+.managed-locations-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.managed-locations h3 { margin: 0; font-size: 15px; }
+.managed-locations p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.managed-locations-list { display: grid; gap: 9px; }
+.location-card { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 11px; align-items: center; padding: 12px; border: 1px solid var(--line); background: #fff; }
+.location-card strong { display: block; font-size: 12px; }
+.location-card span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.location-thumb { width: 48px; height: 48px; }
+.location-thumb svg { width: 20px; height: 20px; }
+.location-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.location-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 
 .adicional-layout { display: grid; grid-template-columns: minmax(310px, .7fr) minmax(0, 1.3fr); gap: 22px; }
 .additional-card { display: grid; grid-template-columns: 35px minmax(0, 1fr) auto; gap: 11px; align-items: center; padding: 15px 19px; border-bottom: 1px solid var(--line); }
@@ -330,10 +359,15 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .layout-canvas { min-height: 350px; }
   .layout-inspector { padding: 17px; }
   .zone { font-size: 9px; }
+  .user-row, .user-actions, .location-card { align-items: stretch; }
+  .user-row, .location-card { display: grid; grid-template-columns: 1fr; }
+  .user-actions { justify-content: flex-start; }
+  .location-actions { justify-content: flex-start; }
+  .photo-manager { align-items: flex-start; }
+  .managed-locations-heading { display: grid; }
 }
 @media print {
   body > *:not(#print-root) { display: none !important; }
   #print-root { display: block !important; }
   .print-document { display: block; }
 }
-
