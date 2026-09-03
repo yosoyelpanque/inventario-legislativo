@@ -1,7 +1,7 @@
 // Refresco de publicación: conserva una única versión de caché para la corrección Oracle.
-const CACHE = 'inventario-legislativo-v13';
+const CACHE = 'inventario-legislativo-v14';
 const CORE = [
-  './', './index.html', './styles.css?v=13', './app.js?v=13', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=14', './app.js?v=14', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
