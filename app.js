@@ -19,9 +19,9 @@ const MAGIC_PROFILES = [
   ['^17WZ[A-Z0-9]{8,}', 'TELÉFONO', 'AVAYA', '9611G', 'Cámara']
 ].map(([regex, descripcion, marca, modelo, possession]) => ({ id: crypto.randomUUID(), regex, descripcion, marca, modelo, possession }));
 
-const SPACE_TYPES = ['ARCHIVO', 'AREA SECRETARIAL', 'BODEGA', 'CUBICULO', 'FOTOCOPIADO', 'PAPELERIA', 'MODULO', 'OFICINA', 'PASILLO', 'RECEPCION', 'SALA DE ESPERA', 'SALA DE JUNTAS', 'COCINA', 'COMEDOR', 'SITE', '(OTRO MANUAL)'];
-const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. CENDI', 'EDIF. TALLERES GRAFICOS', 'EDIF. RESGUARDO Y SEGURIDAD E1', 'EDIF. RESGUARDO Y SEGURIDAD P1', 'ESTACIONAMIENTO 1', 'ESTACIONAMIENTO 2', 'ESTACIONAMIENTO 3', 'ESTACIONAMIENTO 4', 'ESTACIONAMIENTO HELIPUERTO', '(OTRO MANUAL)'];
-const FLOORS = ['BASAMENTO', 'PLANTA BAJA', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'AZOTEA', 'SOTANO', '(OTRO MANUAL)'];
+const SPACE_TYPES = ['ARCHIVO', 'AREA SECRETARIAL', 'BODEGA', 'CUBICULO', 'FOTOCOPIADO', 'PAPELERIA', 'MODULO', 'OFICINA', 'PASILLO', 'RECEPCION', 'SALA DE ESPERA', 'SALA DE JUNTAS', 'COCINA', 'COMEDOR', 'SITE', '(OTRO)'];
+const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. CENDI', 'EDIF. TALLERES GRAFICOS', 'EDIF. RESGUARDO Y SEGURIDAD E1', 'EDIF. RESGUARDO Y SEGURIDAD P1', 'ESTACIONAMIENTO 1', 'ESTACIONAMIENTO 2', 'ESTACIONAMIENTO 3', 'ESTACIONAMIENTO 4', 'ESTACIONAMIENTO HELIPUERTO', '(OTRO)'];
+const FLOORS = ['BASAMENTO', 'PLANTA BAJA', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'AZOTEA', 'SOTANO', '(OTRO)'];
 
 const iconPaths = {
   inventory: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
@@ -150,19 +150,20 @@ function activateUserLocation(userId, locationId) {
 function personName(userId) { return state.users.find((user) => user.id === userId)?.name || 'Sin asignar'; }
 function statuses() { return { total: state.inventory.length, located: state.inventory.filter((item) => item.status === 'ubicado').length, pending: state.inventory.filter((item) => item.status !== 'ubicado').length }; }
 function areas() { return [...new Set([...state.inventory.map((item) => item.area), ...Object.keys(state.areaNames || {})].map((area) => String(area || '').trim()).filter(Boolean))].sort(); }
-function catalogValues(defaults, property) {
-  const values = state.users.flatMap((user) => (user.locations || []).map((location) => location[property]).filter(Boolean));
-  return [...new Set([...defaults, ...values].map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es-MX'));
+function catalogValues(defaults, alphabetical = false) {
+  const other = defaults.find((value) => value === '(OTRO)');
+  const values = defaults.filter((value) => value !== '(OTRO)');
+  return [...(alphabetical ? values.sort((a, b) => a.localeCompare(b, 'es-MX')) : values), ...(other ? [other] : [])];
 }
-function spaceTypes() { return catalogValues(SPACE_TYPES, 'type'); }
-function buildings() { return catalogValues(BUILDINGS, 'building'); }
-function floors() { return catalogValues(FLOORS, 'floor'); }
+function spaceTypes() { return catalogValues(SPACE_TYPES, true); }
+function buildings() { return catalogValues(BUILDINGS); }
+function floors() { return catalogValues(FLOORS); }
 function comparableName(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-MX'); }
 function userAreaOptions(selected = '') {
   const values = [...new Set([...areas(), ...state.users.map((user) => user.area), selected].map((area) => String(area || '').trim()).filter(Boolean))].sort();
   return `<option value="">Selecciona un área cargada</option>${values.map((area) => `<option value="${escapeHtml(area)}" ${area === selected ? 'selected' : ''}>${escapeHtml(area)} ${escapeHtml(state.areaNames[area] || '')}</option>`).join('')}`;
 }
-function datalist(id, values) { return `<datalist id="${id}">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join('')}</datalist>`; }
+function selectOptions(values, selected, placeholder) { return `<option value="" ${selected ? '' : 'selected'}>${escapeHtml(placeholder)}</option>${values.map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}`; }
 function filteredInventory() {
   const query = inventoryFilters.query.trim().toLocaleLowerCase('es-MX');
   return state.inventory.filter((item) => (!inventoryFilters.area || item.area === inventoryFilters.area) && (!inventoryFilters.status || item.status === inventoryFilters.status) && (!query || [item.clave, item.descripcion, item.marca, item.modelo, item.serie, item.areaName, personName(item.userId)].join(' ').toLocaleLowerCase('es-MX').includes(query)));
@@ -175,14 +176,18 @@ function nextLocation(label, ignoreLocationId = '', userId = '') {
   return `${base} ${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
 }
 function locationValues(form, ignoreLocationId = '', userId = '') {
-  const type = String(form.get('spaceType') || '').trim().toLocaleUpperCase('es-MX');
+  const selectValue = (name, customName) => {
+    const value = String(form.get(name) || '').trim();
+    return (value === '(OTRO)' ? String(form.get(customName) || '') : value).trim().toLocaleUpperCase('es-MX');
+  };
+  const type = selectValue('spaceType', 'customSpaceType');
   const customName = String(form.get('locationName') || '').trim().toLocaleUpperCase('es-MX');
   return {
     id: ignoreLocationId || uuid(),
-    type: type || 'OFICINA',
+    type,
     name: customName || nextLocation(type, ignoreLocationId, userId),
-    building: String(form.get('building') || '').trim().toLocaleUpperCase('es-MX'),
-    floor: String(form.get('floor') || '').trim().toLocaleUpperCase('es-MX'),
+    building: selectValue('building', 'customBuilding'),
+    floor: selectValue('floor', 'customFloor'),
     photoKey: ''
   };
 }
@@ -231,12 +236,20 @@ function summaryAside(counts) {
 }
 
 function locationFieldsMarkup(prefix, location = {}) {
-  const type = location.type || inferSpaceType(location.name || 'OFICINA');
-  return `${datalist(`${prefix}-space-types`, spaceTypes())}${datalist(`${prefix}-buildings`, buildings())}${datalist(`${prefix}-floors`, floors())}
-    <div class="field"><label for="${prefix}-space-type">Tipo de espacio</label><input id="${prefix}-space-type" name="spaceType" list="${prefix}-space-types" required value="${escapeHtml(type)}" placeholder="OFICINA" /></div>
+  const rawType = String(location.type || (location.name ? inferSpaceType(location.name) : '')).trim().toLocaleUpperCase('es-MX');
+  const rawBuilding = String(location.building || '').trim().toLocaleUpperCase('es-MX');
+  const rawFloor = String(location.floor || '').trim().toLocaleUpperCase('es-MX');
+  const valueFor = (value, values) => values.includes(value) ? value : (value ? '(OTRO)' : '');
+  const typeValue = valueFor(rawType, spaceTypes()); const buildingValue = valueFor(rawBuilding, buildings()); const floorValue = valueFor(rawFloor, floors());
+  const customField = (name, label, value, visible, id) => `<div class="field" id="${id}" ${visible ? '' : 'hidden'}><label for="${id}-input">${label}</label><input id="${id}-input" name="${name}" value="${escapeHtml(value)}" ${visible ? 'required' : ''} placeholder="Escribe el valor" /></div>`;
+  return `
+    <div class="field"><label for="${prefix}-space-type">Tipo de espacio</label><select id="${prefix}-space-type" name="spaceType" data-custom-field="${prefix}-custom-space-type" required>${selectOptions(spaceTypes(), typeValue, 'Selecciona tipo de espacio')}</select></div>
+    ${customField('customSpaceType', 'Otro tipo de espacio', typeValue === '(OTRO)' ? rawType : '', typeValue === '(OTRO)', `${prefix}-custom-space-type`)}
     <div class="field"><label for="${prefix}-location-name">Nombre visible</label><input id="${prefix}-location-name" name="locationName" value="${escapeHtml(location.name || '')}" placeholder="Automático: OFICINA 01" /></div>
-    <div class="field"><label for="${prefix}-building">Edificio</label><input id="${prefix}-building" name="building" list="${prefix}-buildings" value="${escapeHtml(location.building || '')}" placeholder="EDIF. A" /></div>
-    <div class="field"><label for="${prefix}-floor">Piso</label><input id="${prefix}-floor" name="floor" list="${prefix}-floors" value="${escapeHtml(location.floor || '')}" placeholder="PLANTA BAJA" /></div>`;
+    <div class="field"><label for="${prefix}-building">Edificio</label><select id="${prefix}-building" name="building" data-custom-field="${prefix}-custom-building">${selectOptions(buildings(), buildingValue, 'Selecciona edificio')}</select></div>
+    ${customField('customBuilding', 'Otro edificio', buildingValue === '(OTRO)' ? rawBuilding : '', buildingValue === '(OTRO)', `${prefix}-custom-building`)}
+    <div class="field"><label for="${prefix}-floor">Piso</label><select id="${prefix}-floor" name="floor" data-custom-field="${prefix}-custom-floor">${selectOptions(floors(), floorValue, 'Selecciona piso')}</select></div>
+    ${customField('customFloor', 'Otro piso', floorValue === '(OTRO)' ? rawFloor : '', floorValue === '(OTRO)', `${prefix}-custom-floor`)}`;
 }
 
 function usersModule() {
@@ -466,6 +479,7 @@ async function handleClick(event) {
 }
 
 async function handleChange(event) {
+  if (event.target.matches('[data-custom-field]')) { const field = $(`#${event.target.dataset.customField}`); const input = field?.querySelector('input'); const show = event.target.value === '(OTRO)'; if (field) field.hidden = !show; if (input) { input.required = show; if (show) input.focus(); else input.value = ''; } return; }
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
@@ -527,7 +541,7 @@ document.addEventListener('submit', async (event) => {
   if (event.target.id === 'user-form') {
     event.preventDefault(); const form = new FormData(event.target); const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
     const existing = state.users.find((user) => comparableName(user.name) === comparableName(name)); if (existing) { openDuplicateUserModal(existing, name); return; }
-    const user = { id: uuid(), name, area, photoKey: '', activeLocationId: '', locations: [] }; const location = locationValues(form, '', user.id); user.locations = [location]; user.activeLocationId = location.id;
+    const user = { id: uuid(), name, area, photoKey: '', activeLocationId: '', locations: [] }; const location = locationValues(form, '', user.id); if (!location.type) { notify('Selecciona un tipo de espacio o captura uno en “(OTRO)”.', 'warning'); return; } user.locations = [location]; user.activeLocationId = location.id;
     const userPhoto = selectedPhoto(form, 'userPhoto'); const locationPhoto = selectedPhoto(form, 'locationPhoto'); if (!validPhoto(userPhoto) || !validPhoto(locationPhoto)) return;
     await mutate(() => { state.users.push(user); activateUserLocation(user.id, location.id); }, `Se registró a ${name} con ${location.name}.`);
     if (userPhoto) await saveUserPhotoFile(user.id, userPhoto);
@@ -543,7 +557,7 @@ document.addEventListener('submit', async (event) => {
   }
   if (event.target.id === 'location-form') {
     event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
-    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId, user.id); if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
+    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId, user.id); if (!location.type) { notify('Selecciona un tipo de espacio o captura uno en “(OTRO)”.', 'warning'); return; } if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
     if (previous) {
       const previousName = previous.name; location.photoKey = previous.photoKey || ''; let changed = 0;
       await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const target = current?.locations?.find((entry) => entry.id === previous.id); if (!target) return; Object.assign(target, location); changed = renameLocationReferences(user.id, previousName, location.name); activateUserLocation(user.id, location.id); }, `Se actualizó ${location.name}${changed ? ` y ${changed} bien${changed === 1 ? '' : 'es'} vinculado${changed === 1 ? '' : 's'}` : ''}.`);
@@ -612,7 +626,7 @@ async function init() {
   window.addEventListener('appinstalled', () => { installPrompt = null; if (state?.auditor) { render(); notify('La aplicación se instaló correctamente.'); } });
   window.addEventListener('online', () => { if (state?.auditor) { render(); notify('Conexión recuperada. Tus datos siguen guardados solo en este dispositivo.'); } });
   window.addEventListener('offline', () => { if (state?.auditor) { render(); notify('Sin conexión: puedes seguir trabajando con los datos locales.', 'warning'); } });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=13').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=14').catch(() => {});
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
