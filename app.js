@@ -19,6 +19,10 @@ const MAGIC_PROFILES = [
   ['^17WZ[A-Z0-9]{8,}', 'TELÉFONO', 'AVAYA', '9611G', 'Cámara']
 ].map(([regex, descripcion, marca, modelo, possession]) => ({ id: crypto.randomUUID(), regex, descripcion, marca, modelo, possession }));
 
+const SPACE_TYPES = ['ÁREA SECRETARIAL', 'RECEPCIÓN', 'CUBÍCULO', 'OFICINA', 'SALA DE JUNTAS', 'BODEGA', 'ARCHIVO', 'ALMACÉN', 'ÁREA DE TRABAJO', 'ESTACIONAMIENTO', 'PASILLO', 'COMEDOR', 'TALLER'];
+const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. D', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. J', 'EDIF. CENDI'];
+const FLOORS = ['SÓTANO', 'PLANTA BAJA', 'PISO PRINCIPAL', 'MEZZANINE', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'PISO 5', 'PISO 6', 'PISO 7', 'PISO 8', 'PISO 9', 'PISO 10', 'AZOTEA'];
+
 const iconPaths = {
   inventory: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
   users: '<circle cx="12" cy="8" r="3.3"/><path d="M5.2 20c.5-3.5 3-5.4 6.8-5.4s6.3 1.9 6.8 5.4"/>',
@@ -50,18 +54,43 @@ let layoutUserId = '';
 let layoutLocationName = '';
 let layoutPlanUrl = '';
 let installPrompt = null;
+let modalObjectUrls = [];
 
 function emptyState() {
   return {
-    schemaVersion: 3, auditor: null, activeUserId: '', inventory: [], users: [], additionalItems: [], notes: [],
+    schemaVersion: 4, auditor: null, activeUserId: '', inventory: [], users: [], additionalItems: [], notes: [],
     magicProfiles: structuredClone(MAGIC_PROFILES), activity: [], areaNames: {}, layouts: {}, updatedAt: Date.now()
   };
 }
 
+function inferSpaceType(value) {
+  const label = String(value || '').trim().toLocaleUpperCase('es-MX');
+  return SPACE_TYPES.find((type) => label.startsWith(type)) || label.replace(/\s+\d+$/, '') || 'OFICINA';
+}
+
+function normalizeLocation(location, details = {}) {
+  const raw = typeof location === 'string' ? { name: location, ...details } : { ...(location || {}) };
+  const name = String(raw.name || raw.nombre || raw.location || '').trim();
+  return {
+    ...raw,
+    id: raw.id || uuid(),
+    name,
+    type: String(raw.type || raw.tipoEspacio || inferSpaceType(name)).trim(),
+    building: String(raw.building || raw.edificio || '').trim(),
+    floor: String(raw.floor || raw.piso || '').trim(),
+    photoKey: String(raw.photoKey || '')
+  };
+}
+
 function normalizeBackup(source = {}) {
-  const users = source.users || (source.resguardantes || []).map((user) => ({
-    id: user.id || uuid(), name: user.name || '', area: user.area || '',
-    locations: user.locations?.map((name) => ({ name, building: user.locationDetails?.[name]?.edificio || '', floor: user.locationDetails?.[name]?.piso || '' })) || []
+  const rawUsers = Array.isArray(source.users) && source.users.length ? source.users : (source.resguardantes || []);
+  const users = rawUsers.map((user) => ({
+    ...user,
+    id: user.id || uuid(),
+    name: String(user.name || user.nombre || '').trim(),
+    area: String(user.area || '').trim(),
+    photoKey: String(user.photoKey || ''),
+    locations: (user.locations || []).map((location) => normalizeLocation(location, user.locationDetails?.[location] || {})).filter((location) => location.name)
   }));
   const inventoryRows = (source.inventory || []).map((item) => ({
     id: item.id || uuid(), clave: normalizeKey(item.clave ?? item['CLAVE UNICA'] ?? ''),
@@ -102,16 +131,49 @@ function getActiveUser() { return state.users.find((user) => user.id === state.a
 function personName(userId) { return state.users.find((user) => user.id === userId)?.name || 'Sin asignar'; }
 function statuses() { return { total: state.inventory.length, located: state.inventory.filter((item) => item.status === 'ubicado').length, pending: state.inventory.filter((item) => item.status !== 'ubicado').length }; }
 function areas() { return [...new Set(state.inventory.map((item) => item.area).filter(Boolean))].sort(); }
+function catalogValues(defaults, property) {
+  const values = state.users.flatMap((user) => (user.locations || []).map((location) => location[property]).filter(Boolean));
+  return [...new Set([...defaults, ...values].map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es-MX'));
+}
+function spaceTypes() { return catalogValues(SPACE_TYPES, 'type'); }
+function buildings() { return catalogValues(BUILDINGS, 'building'); }
+function floors() { return catalogValues(FLOORS, 'floor'); }
+function comparableName(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-MX'); }
+function userAreaOptions(selected = '') {
+  const values = [...new Set([...areas(), selected].filter(Boolean))].sort();
+  return `<option value="">Selecciona un área cargada</option>${values.map((area) => `<option value="${escapeHtml(area)}" ${area === selected ? 'selected' : ''}>${escapeHtml(area)} ${escapeHtml(state.areaNames[area] || '')}</option>`).join('')}`;
+}
+function datalist(id, values) { return `<datalist id="${id}">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join('')}</datalist>`; }
 function filteredInventory() {
   const query = inventoryFilters.query.trim().toLocaleLowerCase('es-MX');
   return state.inventory.filter((item) => (!inventoryFilters.area || item.area === inventoryFilters.area) && (!inventoryFilters.status || item.status === inventoryFilters.status) && (!query || [item.clave, item.descripcion, item.marca, item.modelo, item.serie, item.areaName, personName(item.userId)].join(' ').toLocaleLowerCase('es-MX').includes(query)));
 }
 function locationsFor(userId) { return state.users.find((user) => user.id === userId)?.locations || []; }
-function nextLocation(label) {
-  const used = state.users.flatMap((user) => user.locations.map((location) => location.name));
+function nextLocation(label, ignoreLocationId = '') {
+  const used = state.users.flatMap((user) => user.locations.filter((location) => location.id !== ignoreLocationId).map((location) => location.name));
   const base = label.trim().toUpperCase() || 'OFICINA';
   const nums = used.map((value) => value.match(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+(\\d+)$`))?.[1]).filter(Boolean).map(Number);
   return `${base} ${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
+}
+function locationValues(form, ignoreLocationId = '') {
+  const type = String(form.get('spaceType') || '').trim().toLocaleUpperCase('es-MX');
+  const customName = String(form.get('locationName') || '').trim().toLocaleUpperCase('es-MX');
+  return {
+    id: ignoreLocationId || uuid(),
+    type: type || 'OFICINA',
+    name: customName || nextLocation(type, ignoreLocationId),
+    building: String(form.get('building') || '').trim().toLocaleUpperCase('es-MX'),
+    floor: String(form.get('floor') || '').trim().toLocaleUpperCase('es-MX'),
+    photoKey: ''
+  };
+}
+function userHasLocation(user, locationName, ignoreLocationId = '') { return (user.locations || []).some((location) => location.id !== ignoreLocationId && comparableName(location.name) === comparableName(locationName)); }
+function relatedItems(userId, locationName = '') { return [...state.inventory, ...state.additionalItems].filter((item) => item.userId === userId && (!locationName || item.location === locationName)); }
+function suggestedSimilarName(name) {
+  const base = String(name).trim(); let count = 2; let candidate = `${base} (${count})`;
+  const existing = new Set(state.users.map((user) => comparableName(user.name)));
+  while (existing.has(comparableName(candidate))) candidate = `${base} (${++count})`;
+  return candidate;
 }
 
 function loginView() {
@@ -149,9 +211,23 @@ function summaryAside(counts) {
   return `<aside class="stat-aside"><section class="side-card"><h2>Resumen general</h2><div class="summary-number"><strong>${counts.total.toLocaleString('es-MX')}</strong><span>Total de bienes</span></div><div class="status-list"><div class="status-row"><span><i class="status-dot ok"></i>Ubicados</span><b>${counts.located}</b></div><div class="status-row"><span><i class="status-dot pending"></i>Pendientes</span><b>${counts.pending}</b></div><div class="status-row"><span><i class="status-dot alert"></i>Por re-etiquetar</span><b>${state.inventory.filter((item) => item.retag).length}</b></div></div></section><section class="side-card"><h2>Actividad reciente</h2><div class="activity">${activity}</div></section></aside>`;
 }
 
+function locationFieldsMarkup(prefix, location = {}) {
+  const type = location.type || inferSpaceType(location.name || 'OFICINA');
+  return `${datalist(`${prefix}-space-types`, spaceTypes())}${datalist(`${prefix}-buildings`, buildings())}${datalist(`${prefix}-floors`, floors())}
+    <div class="field"><label for="${prefix}-space-type">Tipo de espacio</label><input id="${prefix}-space-type" name="spaceType" list="${prefix}-space-types" required value="${escapeHtml(type)}" placeholder="OFICINA" /></div>
+    <div class="field"><label for="${prefix}-location-name">Nombre visible</label><input id="${prefix}-location-name" name="locationName" value="${escapeHtml(location.name || '')}" placeholder="Automático: OFICINA 01" /></div>
+    <div class="field"><label for="${prefix}-building">Edificio</label><input id="${prefix}-building" name="building" list="${prefix}-buildings" value="${escapeHtml(location.building || '')}" placeholder="EDIF. A" /></div>
+    <div class="field"><label for="${prefix}-floor">Piso</label><input id="${prefix}-floor" name="floor" list="${prefix}-floors" value="${escapeHtml(location.floor || '')}" placeholder="PLANTA BAJA" /></div>`;
+}
+
 function usersModule() {
-  const rows = state.users.map((user) => `<article class="user-row ${user.id === state.activeUserId ? 'active-user' : ''}"><div><strong>${escapeHtml(user.name)}</strong><span>Área ${escapeHtml(user.area || 'sin asignar')} · ${(user.locations || []).map((loc) => escapeHtml(loc.name)).join(', ') || 'Sin ubicaciones'}</span></div><div>${user.id === state.activeUserId ? '<span class="tag">Activo</span>' : ''}<button class="btn secondary small" data-action="activate-user" data-id="${user.id}">${user.id === state.activeUserId ? 'Quitar' : 'Activar'}</button></div></article>`).join('') || `<div class="empty-state"><div><h2>Aún no hay resguardantes</h2><p>Crea el primer resguardante y una ubicación para asignar bienes desde el inventario.</p></div></div>`;
-  return `<section class="module"><div class="two-column"><section class="form-panel"><h2>Nuevo resguardante</h2><p>Las ubicaciones se numeran de forma global para evitar duplicados entre áreas.</p><form id="user-form" class="form-grid"><div class="field span-2"><label>Nombre completo</label><input name="name" required placeholder="Nombre de la persona responsable" /></div><div class="field"><label>Área</label><input name="area" required placeholder="0604500" /></div><div class="field"><label>Tipo de espacio</label><input name="locationBase" value="OFICINA" placeholder="OFICINA" /></div><div class="field"><label>Edificio</label><input name="building" placeholder="Ej. EDIF. CENDI" /></div><div class="field"><label>Piso</label><input name="floor" placeholder="Ej. PLANTA BAJA" /></div><div class="form-actions span-2"><button class="btn" type="submit">${icon('add')} Crear resguardante</button></div></form></section><section class="module-panel"><div class="panel-heading"><div><h2>Resguardantes registrados</h2><p>${state.users.length} personas · ${state.users.reduce((count, user) => count + user.locations.length, 0)} ubicaciones</p></div></div><div class="users-list">${rows}</div></section></div></section>`;
+  const rows = state.users.map((user) => {
+    const locations = user.locations || []; const latest = locations.at(-1);
+    const chips = locations.map((location) => `<span class="location-chip">${icon('pin')} ${escapeHtml(location.name)}</span>`).join('') || '<span class="location-chip muted">Sin ubicaciones</span>';
+    return `<article class="user-row user-card ${user.id === state.activeUserId ? 'active-user' : ''}"><div class="user-identity"><span class="user-avatar">${escapeHtml(shortName(user.name || '?'))}</span><div><strong>${escapeHtml(user.name)}</strong><span>Área ${escapeHtml(user.area || 'sin asignar')} · ${locations.length} ${locations.length === 1 ? 'ubicación' : 'ubicaciones'}${latest ? ` · Última: ${escapeHtml(latest.name)}` : ''}</span><div class="location-chips">${chips}</div></div></div><div class="user-actions">${user.id === state.activeUserId ? '<span class="tag">Activo</span>' : ''}<button class="btn secondary small" data-action="edit-user" data-id="${user.id}">${icon('pencil')} Gestionar</button><button class="btn secondary small" data-action="activate-user" data-id="${user.id}">${user.id === state.activeUserId ? 'Quitar' : 'Activar'}</button></div></article>`;
+  }).join('') || `<div class="empty-state"><div><h2>Aún no hay resguardantes</h2><p>Crea el primer resguardante y una ubicación para asignar bienes desde el inventario.</p></div></div>`;
+  const areaReady = areas().length > 0;
+  return `<section class="module"><div class="two-column"><section class="form-panel"><h2>Nuevo resguardante</h2><p>El área se toma de los listados cargados. Los catálogos de ubicación conservan valores editables y aprenden los nuevos registros.</p><form id="user-form" class="form-grid"><div class="field span-2"><label for="user-name">Nombre completo</label><input id="user-name" name="name" required autocomplete="name" placeholder="Nombre de la persona responsable" /></div><div class="field span-2"><label for="user-area">Área</label><select id="user-area" name="area" required ${areaReady ? '' : 'disabled'}>${userAreaOptions()}</select>${areaReady ? '' : '<small class="field-hint">Carga al menos un listado para habilitar las áreas.</small>'}</div>${locationFieldsMarkup('user')}<div class="field"><label for="user-photo-new">Foto del resguardante</label><input id="user-photo-new" name="userPhoto" type="file" accept="image/*" capture="user" /></div><div class="field"><label for="location-photo-new">Foto de la primera ubicación</label><input id="location-photo-new" name="locationPhoto" type="file" accept="image/*" capture="environment" /></div><div class="form-actions span-2"><button class="btn" type="submit" ${areaReady ? '' : 'disabled'}>${icon('add')} Crear resguardante</button></div></form></section><section class="module-panel"><div class="panel-heading"><div><h2>Resguardantes registrados</h2><p>${state.users.length} personas · ${state.users.reduce((count, user) => count + (user.locations || []).length, 0)} ubicaciones</p></div></div><div class="users-list">${rows}</div></section></div></section>`;
 }
 
 function additionalModule() {
@@ -217,15 +293,43 @@ function settingsModule() {
 
 function render() { if (!state.auditor) loginView(); else shell(); }
 
+function clearModalObjectUrls() { modalObjectUrls.forEach((url) => URL.revokeObjectURL(url)); modalObjectUrls = []; }
+function modalPhotoUrl(blob) { if (!blob) return ''; const url = URL.createObjectURL(blob); modalObjectUrls.push(url); return url; }
 function openModal(title, body, { wide = false, footer = '<button class="btn secondary" data-action="close-modal">Cerrar</button>' } = {}) {
   modalRoot.innerHTML = `<div class="modal-backdrop" data-action="close-modal"><section class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}"><header class="modal-header"><div><h2>${escapeHtml(title)}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Cerrar">${icon('close')}</button></header><div class="modal-body">${body}</div><footer class="modal-footer">${footer}</footer></section></div>`;
 }
-function closeModal() { stopScanner(); modalRoot.innerHTML = ''; }
+function closeModal() { stopScanner(); clearModalObjectUrls(); modalRoot.innerHTML = ''; }
 function confirmModal(title, text, callback, confirmLabel = 'Confirmar', danger = false) { openModal(title, `<p style="margin:0;color:var(--muted);line-height:1.55">${escapeHtml(text)}</p>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn ${danger ? 'danger' : ''}" data-action="modal-confirm">${escapeHtml(confirmLabel)}</button>` }); $('#modal-root [data-action="modal-confirm"]').onclick = async () => { closeModal(); await callback(); }; }
+
+async function openUserEditor(userId) {
+  const user = state.users.find((entry) => entry.id === userId); if (!user) { notify('El resguardante ya no existe.', 'warning'); return; }
+  clearModalObjectUrls();
+  const photos = await Promise.all([user.photoKey ? storage.photo(user.photoKey) : null, ...(user.locations || []).map((location) => location.photoKey ? storage.photo(location.photoKey) : null)]);
+  const profileUrl = modalPhotoUrl(photos[0]);
+  const locations = (user.locations || []).map((location, index) => {
+    const photoUrl = modalPhotoUrl(photos[index + 1]); const linked = relatedItems(user.id, location.name).length;
+    return `<article class="location-card"><div class="location-thumb">${photoUrl ? `<img src="${photoUrl}" alt="Foto de ${escapeHtml(location.name)}" />` : icon('camera')}</div><div><strong>${escapeHtml(location.name)}</strong><span>${escapeHtml(location.type || 'Espacio')} · ${escapeHtml(location.building || 'Edificio sin especificar')} · ${escapeHtml(location.floor || 'Piso sin especificar')}</span><span>${linked} bien${linked === 1 ? '' : 'es'} asignado${linked === 1 ? '' : 's'}</span></div><div class="location-actions"><button class="btn secondary small" data-action="edit-location" data-user-id="${user.id}" data-location-id="${location.id}">${icon('pencil')} Editar</button><button class="btn secondary small" data-action="choose-location-photo" data-user-id="${user.id}" data-location-id="${location.id}">${icon('camera')} ${photoUrl ? 'Reemplazar' : 'Foto'}</button>${photoUrl ? `<button class="btn secondary small" data-action="remove-location-photo" data-user-id="${user.id}" data-location-id="${location.id}">Quitar foto</button>` : ''}<button class="btn secondary small" data-action="remove-location" data-user-id="${user.id}" data-location-id="${location.id}">Eliminar</button></div></article>`;
+  }).join('') || '<p class="page-subtitle">Este resguardante aún no tiene ubicaciones.</p>';
+  openModal(`Gestionar resguardante`, `<form id="user-edit-form" class="form-grid" data-user-id="${user.id}"><div class="field span-2"><label for="edit-user-name">Nombre completo</label><input id="edit-user-name" name="name" required value="${escapeHtml(user.name)}" /></div><div class="field span-2"><label for="edit-user-area">Área</label><select id="edit-user-area" name="area" required>${userAreaOptions(user.area)}</select></div><div class="photo-manager span-2"><div class="profile-photo">${profileUrl ? `<img src="${profileUrl}" alt="Foto de ${escapeHtml(user.name)}" />` : `<span>${escapeHtml(shortName(user.name || '?'))}</span>`}</div><div><strong>Foto del resguardante</strong><p>Captura o selecciona una imagen. Se conserva únicamente en este navegador.</p><button class="btn secondary small" type="button" data-action="choose-user-photo" data-user-id="${user.id}">${icon('camera')} ${profileUrl ? 'Reemplazar foto' : 'Agregar foto'}</button>${profileUrl ? `<button class="btn secondary small" type="button" data-action="remove-user-photo" data-user-id="${user.id}">Quitar foto</button>` : ''}</div></div><input id="user-photo-input" class="hidden" type="file" accept="image/*" capture="user" data-user-id="${user.id}" /></form><section class="managed-locations"><div class="managed-locations-heading"><div><h3>Ubicaciones</h3><p>Una persona puede tener todas las ubicaciones que necesite.</p></div><button class="btn small" data-action="add-location" data-user-id="${user.id}">${icon('add')} Agregar ubicación</button></div><div class="managed-locations-list">${locations}</div><input id="location-photo-input" class="hidden" type="file" accept="image/*" capture="environment" /></section>`, { wide: true, footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button class="btn danger" data-action="delete-user" data-user-id="${user.id}">Eliminar resguardante</button><button class="btn" type="submit" form="user-edit-form">Guardar cambios</button>` });
+}
+
+function openLocationEditor(userId, locationId = '') {
+  const user = state.users.find((entry) => entry.id === userId); if (!user) return;
+  clearModalObjectUrls();
+  const location = (user.locations || []).find((entry) => entry.id === locationId);
+  const editing = Boolean(location);
+  openModal(editing ? `Editar ${location.name}` : `Agregar ubicación a ${user.name}`, `<form id="location-form" class="form-grid" data-user-id="${user.id}" data-location-id="${location?.id || ''}">${locationFieldsMarkup('location-editor', location || {})}<p class="form-tip span-2">Si dejas vacío el nombre visible, se asignará automáticamente el siguiente consecutivo del tipo de espacio.</p></form>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn" type="submit" form="location-form">${editing ? 'Guardar ubicación' : 'Agregar ubicación'}</button>` });
+}
+
+function openDuplicateUserModal(user, proposedName) {
+  const suggestion = suggestedSimilarName(proposedName);
+  openModal('Resguardante ya registrado', `<p class="page-subtitle">${escapeHtml(user.name)} ya está registrado en el área ${escapeHtml(user.area || 'sin asignar')}. Puedes añadirle otra ubicación o crear un registro similar con un nombre diferenciado.</p>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn secondary" data-action="duplicate-add-location" data-user-id="${user.id}">${icon('add')} Agregar ubicación</button><button class="btn" data-action="duplicate-similar" data-suggestion="${escapeHtml(suggestion)}">Usar “${escapeHtml(suggestion)}”</button>` });
+}
 
 async function showDetail(id, additional = false) {
   const collection = additional ? state.additionalItems : state.inventory; const item = collection.find((entry) => entry.id === id); if (!item) { notify('El registro ya no existe.', 'warning'); return; }
-  const user = state.users.find((entry) => entry.id === item.userId); const photo = item.photoKey ? await storage.photo(item.photoKey) : null; const photoUrl = photo ? URL.createObjectURL(photo) : '';
+  clearModalObjectUrls();
+  const user = state.users.find((entry) => entry.id === item.userId); const photo = item.photoKey ? await storage.photo(item.photoKey) : null; const photoUrl = modalPhotoUrl(photo);
   const fields = additional ? [['Clave', item.clave], ['Descripción', item.descripcion], ['Marca', item.marca], ['Modelo', item.modelo], ['Serie', item.serie], ['Posesión', item.possession], ['Personal', item.personal ? 'Sí' : 'No'], ['Resguardante', user?.name || 'Sin asignar'], ['Ubicación', item.location || 'Sin asignar'], ['Dato complementario', item.detail || '—']] : [['Clave única', item.clave], ['Descripción', item.descripcion], ['Marca', item.marca], ['Modelo', item.modelo], ['Serie', item.serie || '—'], ['Área', `${item.area} ${item.areaName}`], ['Tipo de libro', item.bookType || '—'], ['Estatus', item.status], ['Resguardante', user?.name || 'Sin asignar'], ['Ubicación', item.location || 'Sin asignar'], ['Re-etiquetado', item.retag ? 'Sí' : 'No'], ['Actualizado', localDate(item.updatedAt)]];
   openModal(additional ? 'Detalle de bien adicional' : 'Detalle de bien', `<div class="detail-grid">${fields.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div><div class="modal-photo">${photoUrl ? `<img src="${photoUrl}" alt="Evidencia del bien" />` : `<span>Sin evidencia fotográfica</span>`}</div><input id="photo-input" class="hidden" type="file" accept="image/*" capture="environment" data-item="${id}" data-additional="${additional}">`, { wide: true, footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button class="btn secondary" data-action="choose-photo">${icon('camera')} ${photo ? 'Reemplazar foto' : 'Agregar foto'}</button>${additional ? '' : `<button class="btn" data-action="open-assign" data-id="${id}">Asignar ubicación</button>`}` });
 }
@@ -284,6 +388,17 @@ async function handleClick(event) {
   if (action === 'new-note') { openStandaloneNote(); return; }
   if (action === 'commit-note') { const text = $('#note-text').value.trim(); const title = $('#note-title').value.trim(); const ids = target.dataset.ids.split(','); if (!text) { notify('Escribe una observación.', 'warning'); return; } await mutate(() => { ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) state.notes.push({ id: uuid(), itemId: id, clave: item.clave, title, text, author: state.auditor.name, createdAt: Date.now() }); }); selected.clear(); }, `Se agregaron ${ids.length} observación${ids.length === 1 ? '' : 'es'} de inventario.`); closeModal(); return; }
   if (action === 'commit-note-picker') { const text = $('#note-text').value.trim(); const title = $('#note-title').value.trim(); const id = $('#note-item').value; const item = state.inventory.find((entry) => entry.id === id); if (!text || !item) { notify('Selecciona un bien y escribe una observación.', 'warning'); return; } await mutate(() => state.notes.push({ id: uuid(), itemId: id, clave: item.clave, title, text, author: state.auditor.name, createdAt: Date.now() }), 'Se agregó una observación de inventario.'); closeModal(); return; }
+  if (action === 'edit-user') { await openUserEditor(target.dataset.id); return; }
+  if (action === 'add-location') { openLocationEditor(target.dataset.userId); return; }
+  if (action === 'edit-location') { openLocationEditor(target.dataset.userId, target.dataset.locationId); return; }
+  if (action === 'duplicate-add-location') { openLocationEditor(target.dataset.userId); return; }
+  if (action === 'duplicate-similar') { closeModal(); const input = $('#user-name'); if (input) { input.value = target.dataset.suggestion; input.focus(); input.select(); } return; }
+  if (action === 'choose-user-photo') { $('#user-photo-input')?.click(); return; }
+  if (action === 'choose-location-photo') { const input = $('#location-photo-input'); if (input) { input.dataset.userId = target.dataset.userId; input.dataset.locationId = target.dataset.locationId; input.click(); } return; }
+  if (action === 'remove-user-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user?.photoKey) return; const key = user.photoKey; confirmModal('Quitar foto del resguardante', 'La fotografía se eliminará de este dispositivo. Esta acción no modifica los bienes asignados.', async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (current) current.photoKey = ''; }, 'Se quitó la foto del resguardante.'); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
+  if (action === 'remove-location-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location?.photoKey) return; const key = location.photoKey; confirmModal('Quitar foto de ubicación', `La fotografía de ${location.name} se eliminará de este dispositivo.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const targetLocation = current?.locations?.find((entry) => entry.id === location.id); if (targetLocation) targetLocation.photoKey = ''; }, `Se quitó la foto de ${location.name}.`); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
+  if (action === 'remove-location') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location) return; const linked = relatedItems(user.id, location.name); if (linked.length) { notify(`No se puede eliminar ${location.name}: tiene ${linked.length} bien${linked.length === 1 ? '' : 'es'} asignado${linked.length === 1 ? '' : 's'}. Reasígnalos primero.`, 'warning'); return; } const photoKey = location.photoKey; confirmModal('Eliminar ubicación', `Se eliminará ${location.name} del resguardante. No hay bienes vinculados a esta ubicación.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations = current.locations.filter((entry) => entry.id !== location.id); const layout = state.layouts?.[current.id]; if (layout?.pins?.[location.name]) { const pins = { ...layout.pins }; delete pins[location.name]; state.layouts[current.id] = { ...layout, pins }; } layoutUserId = current.id; layoutLocationName = current.locations.at(-1)?.name || ''; }, `Se eliminó la ubicación ${location.name}.`); if (photoKey) await storage.deletePhoto(photoKey); await openUserEditor(user.id); }, 'Eliminar ubicación', true); return; }
+  if (action === 'delete-user') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user) return; const linked = relatedItems(user.id); const photoKeys = [user.photoKey, ...(user.locations || []).map((location) => location.photoKey), state.layouts?.[user.id]?.planKey].filter(Boolean); confirmModal('Eliminar resguardante', `${user.name} se eliminará. Sus ${linked.length} bien${linked.length === 1 ? '' : 'es'} quedarán sin resguardante y, en inventario, volverán a pendiente. También se eliminarán sus fotografías locales.`, async () => { await mutate(() => { state.inventory.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', status: 'pendiente', updatedAt: Date.now() }); }); state.additionalItems.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', updatedAt: Date.now() }); }); state.users = state.users.filter((entry) => entry.id !== user.id); if (state.activeUserId === user.id) state.activeUserId = ''; if (layoutUserId === user.id) { layoutUserId = ''; layoutLocationName = ''; } delete state.layouts[user.id]; }, `Se eliminó a ${user.name} y se desvincularon ${linked.length} bienes.`); await Promise.all(photoKeys.map((key) => storage.deletePhoto(key))); }, 'Eliminar resguardante', true); return; }
   if (action === 'activate-user') { const id = target.dataset.id; await mutate(() => { state.activeUserId = state.activeUserId === id ? '' : id; }, state.activeUserId === id ? 'Se desactivó el resguardante de contexto.' : `Se activó a ${personName(id)} como resguardante de contexto.`); return; }
   if (action === 'magic-fill') { magicFillForm(); return; }
   if (action === 'bulk-magic') { let changes = 0; await mutate(() => { state.additionalItems.forEach((item) => { const profile = matchProfile(item.serie); if (profile) { Object.assign(item, { descripcion: profile.descripcion, marca: profile.marca, modelo: profile.modelo, possession: profile.possession, updatedAt: Date.now() }); changes++; } }); }, 'Se aplicaron perfiles de autollenado.'); notify(changes ? `${changes} adicional${changes === 1 ? '' : 'es'} actualizado${changes === 1 ? '' : 's'}.` : 'No hubo series que coincidieran con un perfil.', changes ? 'success' : 'warning'); return; }
@@ -310,6 +425,8 @@ async function handleChange(event) {
   if (event.target.id === 'layout-user-select') { layoutUserId = event.target.value; layoutLocationName = locationsFor(layoutUserId)[0]?.name || ''; render(); return; }
   if (event.target.id === 'layout-location-select') { layoutLocationName = event.target.value; render(); return; }
   if (event.target.matches('[data-file]')) { await handleFile(event.target.dataset.file, event.target.files); event.target.value = ''; return; }
+  if (event.target.id === 'user-photo-input') { const userId = event.target.dataset.userId; const saved = await saveUserPhotoFile(userId, event.target.files?.[0]); if (saved) await openUserEditor(userId); event.target.value = ''; return; }
+  if (event.target.id === 'location-photo-input') { const userId = event.target.dataset.userId; const saved = await saveLocationPhotoFile(userId, event.target.dataset.locationId, event.target.files?.[0]); if (saved) await openUserEditor(userId); event.target.value = ''; return; }
   if (event.target.id === 'photo-input') { await savePhoto(event.target); return; }
 }
 function handleInput(event) {
@@ -320,8 +437,72 @@ function handleInput(event) {
   }
 }
 
+function selectedPhoto(form, name) { const file = form.get(name); return file && typeof file === 'object' && file.size ? file : null; }
+function validPhoto(file) {
+  if (!file) return true;
+  if (!file.type?.startsWith('image/')) { notify('Selecciona una imagen válida.', 'warning'); return false; }
+  if (file.size > 8 * 1024 * 1024) { notify('La fotografía supera el límite de 8 MB.', 'warning'); return false; }
+  return true;
+}
+async function saveUserPhotoFile(userId, file) {
+  if (!validPhoto(file)) return false;
+  const user = state.users.find((entry) => entry.id === userId); if (!user || !file) return Boolean(user);
+  const key = user.photoKey || `user-${user.id}`;
+  await storage.savePhoto(key, file);
+  await mutate(() => { const current = state.users.find((entry) => entry.id === userId); if (current) current.photoKey = key; }, `Se actualizó la foto de ${user.name}.`);
+  return true;
+}
+async function saveLocationPhotoFile(userId, locationId, file) {
+  if (!validPhoto(file)) return false;
+  const user = state.users.find((entry) => entry.id === userId); const location = user?.locations?.find((entry) => entry.id === locationId); if (!user || !location || !file) return Boolean(location);
+  const key = location.photoKey || `location-${user.id}-${location.id}`;
+  await storage.savePhoto(key, file);
+  await mutate(() => { const current = state.users.find((entry) => entry.id === userId); const target = current?.locations?.find((entry) => entry.id === locationId); if (target) target.photoKey = key; }, `Se actualizó la foto de ${location.name}.`);
+  return true;
+}
+function renameLocationReferences(userId, previousName, nextName) {
+  if (previousName === nextName) return 0;
+  let changed = 0;
+  [...state.inventory, ...state.additionalItems].forEach((item) => {
+    if (item.userId === userId && item.location === previousName) { item.location = nextName; item.updatedAt = Date.now(); changed++; }
+  });
+  const layout = state.layouts?.[userId];
+  if (layout?.pins?.[previousName]) {
+    const pins = { ...layout.pins, [nextName]: layout.pins[previousName] }; delete pins[previousName]; state.layouts[userId] = { ...layout, pins };
+  }
+  if (layoutUserId === userId && layoutLocationName === previousName) layoutLocationName = nextName;
+  return changed;
+}
+
 document.addEventListener('submit', async (event) => {
-  if (event.target.id === 'user-form') { event.preventDefault(); const form = new FormData(event.target); const name = String(form.get('name')).trim(); const area = String(form.get('area')).trim(); if (!name || !area) return; const location = { name: nextLocation(String(form.get('locationBase'))), building: String(form.get('building')).trim(), floor: String(form.get('floor')).trim() }; await mutate(() => { const user = { id: uuid(), name, area, locations: [location] }; state.users.push(user); state.activeUserId = user.id; }, `Se registró a ${name} con ${location.name}.`); return; }
+  if (event.target.id === 'user-form') {
+    event.preventDefault(); const form = new FormData(event.target); const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
+    const existing = state.users.find((user) => comparableName(user.name) === comparableName(name)); if (existing) { openDuplicateUserModal(existing, name); return; }
+    const location = locationValues(form); const user = { id: uuid(), name, area, photoKey: '', locations: [location] };
+    const userPhoto = selectedPhoto(form, 'userPhoto'); const locationPhoto = selectedPhoto(form, 'locationPhoto'); if (!validPhoto(userPhoto) || !validPhoto(locationPhoto)) return;
+    await mutate(() => { state.users.push(user); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se registró a ${name} con ${location.name}.`);
+    if (userPhoto) await saveUserPhotoFile(user.id, userPhoto);
+    if (locationPhoto) await saveLocationPhotoFile(user.id, location.id, locationPhoto);
+    return;
+  }
+  if (event.target.id === 'user-edit-form') {
+    event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
+    const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
+    const duplicate = state.users.find((entry) => entry.id !== user.id && comparableName(entry.name) === comparableName(name)); if (duplicate) { notify(`Ya existe ${duplicate.name}. Usa un nombre diferenciado o agrega una ubicación a ese registro.`, 'warning'); return; }
+    await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (current) Object.assign(current, { name, area }); }, `Se actualizaron los datos de ${name}.`);
+    await openUserEditor(user.id); return;
+  }
+  if (event.target.id === 'location-form') {
+    event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
+    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId); if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
+    if (previous) {
+      const previousName = previous.name; location.photoKey = previous.photoKey || ''; let changed = 0;
+      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const target = current?.locations?.find((entry) => entry.id === previous.id); if (!target) return; Object.assign(target, location); changed = renameLocationReferences(user.id, previousName, location.name); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se actualizó ${location.name}${changed ? ` y ${changed} bien${changed === 1 ? '' : 'es'} vinculado${changed === 1 ? '' : 's'}` : ''}.`);
+    } else {
+      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations.push(location); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se agregó ${location.name} a ${user.name}.`);
+    }
+    await openUserEditor(user.id); return;
+  }
   if (event.target.id === 'additional-form') { event.preventDefault(); const form = new FormData(event.target); const series = String(form.get('serie')).trim().toUpperCase(); const userId = String(form.get('userId')); const possession = String(form.get('possession')); const personal = form.get('personal') === 'on'; let key = String(form.get('clave')).trim(); if (!key && possession === 'Cámara' && !personal) key = nextAdditionalKey(userId); if (!key) { notify('La clave única es obligatoria para este tipo de posesión.', 'warning'); return; } if (!String(form.get('descripcion')).trim()) { notify('Agrega una descripción para el bien adicional.', 'warning'); return; } const duplicate = [...state.inventory, ...state.additionalItems].find((item) => item.serie && item.serie.toUpperCase() === series); if (duplicate) { notify(`La serie ya existe en ${duplicate.clave}. Revisa el registro antes de continuar.`, 'warning'); } await mutate(() => state.additionalItems.push({ id: uuid(), clave: key, descripcion: String(form.get('descripcion')).trim(), marca: String(form.get('marca')).trim(), modelo: String(form.get('modelo')).trim(), serie: series, possession, personal, detail: String(form.get('detail')).trim() || (possession === 'Arrendamiento' ? 'LXVIDG AJ- 070/2024' : ''), userId, location: locationsFor(userId)[0]?.name || '', createdAt: Date.now(), updatedAt: Date.now() }), `Se registró el adicional ${key || 'sin clave'}.`); return; }
   if (event.target.id === 'profile-form') { event.preventDefault(); const form = new FormData(event.target); const [marca, modelo] = String(form.get('marcaModelo')).split('|').map((part) => part.trim()); try { new RegExp(String(form.get('regex'))); } catch { notify('La expresión regular no es válida.', 'error'); return; } await mutate(() => state.magicProfiles.push({ id: uuid(), regex: String(form.get('regex')).trim(), descripcion: String(form.get('descripcion')).trim(), marca, modelo, possession: String(form.get('possession')) }), 'Se agregó un perfil de autollenado.'); return; }
 });
@@ -382,7 +563,7 @@ async function init() {
   window.addEventListener('appinstalled', () => { installPrompt = null; if (state?.auditor) { render(); notify('La aplicación se instaló correctamente.'); } });
   window.addEventListener('online', () => { if (state?.auditor) { render(); notify('Conexión recuperada. Tus datos siguen guardados solo en este dispositivo.'); } });
   window.addEventListener('offline', () => { if (state?.auditor) { render(); notify('Sin conexión: puedes seguir trabajando con los datos locales.', 'warning'); } });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=9').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=11').catch(() => {});
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
