@@ -1,7 +1,7 @@
-// Refresco de publicación: conserva una única versión de caché para la corrección Oracle.
-const CACHE = 'inventario-legislativo-v14';
+// Refresco de publicación: los campos manuales sustituyen el selector sin crear filas adicionales.
+const CACHE = 'inventario-legislativo-v15';
 const CORE = [
-  './', './index.html', './styles.css?v=14', './app.js?v=14', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=15', './app.js?v=15', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
