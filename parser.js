@@ -24,9 +24,10 @@ export const normalizeKey = (value) => {
 const isInventoryKey = (value) => /^(?:\d{5,6}|\.\d+)$/.test(normalizeKey(value));
 const getFirst = (rows, matcher) => rows.flat().map(clean).find((value) => matcher.test(value)) || '';
 
-function metadata(rows) {
-  const all = rows.flat().map(clean).filter(Boolean);
-  const areaText = all.find((value) => /(?:ÁREA|AREA)\s*:?\s*\d+/i.test(value)) || '';
+function metadata(rows, documentText = []) {
+  const all = [...rows.flat(), ...documentText].map(clean).filter(Boolean);
+  const areaCandidates = [...all, ...all.slice(0, -1).map((value, index) => `${value} ${all[index + 1]}`)];
+  const areaText = areaCandidates.find((value) => /(?:ÁREA|AREA)\s*:?\s*\d+/i.test(value)) || '';
   const areaMatch = areaText.match(/(?:ÁREA|AREA)\s*:?\s*(\d+)(?:\s*[-:–—]?\s*)(.*)/i);
   const bookText = all.find((value) => /LIBRO\s*:/i.test(value)) || '';
   const bookMatch = bookText.match(/LIBRO\s*:\s*(.+)/i);
@@ -38,8 +39,8 @@ function metadata(rows) {
   };
 }
 
-function buildItems(rows, sourceName) {
-  const info = metadata(rows);
+function buildItems(rows, sourceName, documentText = []) {
+  const info = metadata(rows, documentText);
   const items = [];
   for (const row of rows) {
     const key = normalizeKey(row[0]);
@@ -70,7 +71,8 @@ function parseHtmlBook(text, sourceName) {
   const doc = new DOMParser().parseFromString(text, 'text/html');
   const rows = [...doc.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('th,td')].map((cell) => clean(cell.textContent)));
   if (!rows.length) throw new Error('No se encontraron filas de una exportación Oracle/HTML.');
-  return buildItems(rows, sourceName);
+  const documentText = [...doc.querySelectorAll('p')].map((paragraph) => clean(paragraph.textContent));
+  return buildItems(rows, sourceName, documentText);
 }
 
 function getText(element) {
