@@ -26,8 +26,8 @@ const getFirst = (rows, matcher) => rows.flat().map(clean).find((value) => match
 
 function metadata(rows) {
   const all = rows.flat().map(clean).filter(Boolean);
-  const areaText = all.find((value) => /AREA\s+\d+/i.test(value)) || '';
-  const areaMatch = areaText.match(/AREA\s+(\d+)(?:\s*[-:]?\s*)(.*)/i);
+  const areaText = all.find((value) => /(?:ÁREA|AREA)\s*:?\s*\d+/i.test(value)) || '';
+  const areaMatch = areaText.match(/(?:ÁREA|AREA)\s*:?\s*(\d+)(?:\s*[-:–—]?\s*)(.*)/i);
   const bookText = all.find((value) => /LIBRO\s*:/i.test(value)) || '';
   const bookMatch = bookText.match(/LIBRO\s*:\s*(.+)/i);
   return {
