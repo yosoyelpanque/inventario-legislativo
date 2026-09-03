@@ -1,0 +1,11 @@
+# Datos operativos y archivos de importación: no deben publicarse.
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+*.zip
+backups/
+
+# Archivos locales del sistema.
+.DS_Store
+Thumbs.db
