@@ -56,7 +56,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .page-subtitle { margin: 9px 0 0; color: var(--muted); font-size: 14px; }
 .topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 17px; }
 .sync-status { display: flex; align-items: center; gap: 7px; color: var(--green-800); font-size: 12px; font-weight: 700; white-space: nowrap; }
-.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--jade); box-shadow: 0 0 0 4px rgba(5, 221, 128, .13); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--jade); box-shadow: 0 0 0 4px rgba(5, 221, 128, .13); transition: background .18s ease, box-shadow .18s ease; }
+.sync-status.offline { color: var(--burgundy); }
+.sync-status.offline .sync-dot { background: var(--burgundy); box-shadow: 0 0 0 4px rgba(114, 23, 56, .12); }
+.install-button { color: var(--green-800); }
 .auditor { display: flex; align-items: center; gap: 10px; padding-left: 16px; border-left: 1px solid var(--line); }
 .auditor-avatar { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 50%; color: white; background: var(--green-800); font-size: 13px; font-weight: 800; }
 .auditor strong, .auditor span { display: block; }
@@ -333,3 +336,4 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   #print-root { display: block !important; }
   .print-document { display: block; }
 }
+
