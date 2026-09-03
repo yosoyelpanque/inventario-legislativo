@@ -1,3 +1,4 @@
+// Refresco de publicación: conserva una única versión de caché para la corrección Oracle.
 const CACHE = 'inventario-legislativo-v13';
 const CORE = [
   './', './index.html', './styles.css?v=13', './app.js?v=13', './db.js', './parser.js', './reports.js',
