@@ -49,6 +49,7 @@ let scannerStream = null;
 let layoutUserId = '';
 let layoutLocationName = '';
 let layoutPlanUrl = '';
+let installPrompt = null;
 
 function emptyState() {
   return {
@@ -124,10 +125,11 @@ function loginView() {
 
 const moduleNames = { inventory: 'Inventario', users: 'Resguardantes', layout: 'Croquis de ubicaciones', additional: 'Adicionales', notes: 'Notas', reports: 'Reportes', conciliation: 'Conciliación', settings: 'Configuración' };
 function navItem(module, label, glyph) { return `<button class="nav-item ${activeModule === module ? 'active' : ''}" data-action="nav" data-module="${module}" aria-current="${activeModule === module ? 'page' : 'false'}">${icon(glyph, 'nav-icon')}<span>${label}</span></button>`; }
+function connectionLabel() { return navigator.onLine ? 'Guardado local · en línea' : 'Guardado local · sin conexión'; }
 function shell() {
   const activeUser = getActiveUser();
   const content = ({ inventory: inventoryModule, users: usersModule, layout: layoutModule, additional: additionalModule, notes: notesModule, reports: reportsModule, conciliation: conciliationModule, settings: settingsModule })[activeModule]();
-  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><div class="brand"><img src="./assets/camara-logo.png" alt="Escudo de la Cámara de Diputados" /><div class="brand-caption"><strong>Cámara de<br>Diputados</strong><span>LXVI Legislatura</span></div></div><nav class="main-nav" aria-label="Módulos principales">${navItem('inventory', 'Inventario', 'inventory')}${navItem('users', 'Resguardantes', 'users')}${navItem('layout', 'Croquis', 'map')}${navItem('additional', 'Adicionales', 'add')}${navItem('notes', 'Notas', 'notes')}${navItem('reports', 'Reportes', 'reports')}${navItem('conciliation', 'Conciliación', 'scale')}${navItem('settings', 'Configuración', 'settings')}</nav><div class="sidebar-bottom"><button data-action="logout">${icon('logout', 'nav-icon')}<span>Cerrar sesión</span></button></div></aside><main class="workspace"><header class="topbar"><div><h1 class="page-title">Inventario Legislativo</h1><p class="page-subtitle">${escapeHtml(moduleNames[activeModule])}${activeUser ? ` · Resguardante activo: ${escapeHtml(activeUser.name)}` : ' · Sin resguardante activo'}</p></div><div class="topbar-actions"><span class="sync-status"><i class="sync-dot"></i>Guardado local</span><button class="icon-button" data-action="undo" title="Deshacer" ${history.length ? '' : 'disabled'}>${icon('undo')}</button><div class="auditor"><span class="auditor-avatar">${escapeHtml(shortName(state.auditor.name))}</span><div><strong>${escapeHtml(state.auditor.name)}</strong><span>Auditor en sesión</span></div></div></div></header>${content}</main></div>`;
+  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><div class="brand"><img src="./assets/camara-logo.png" alt="Escudo de la Cámara de Diputados" /><div class="brand-caption"><strong>Cámara de<br>Diputados</strong><span>LXVI Legislatura</span></div></div><nav class="main-nav" aria-label="Módulos principales">${navItem('inventory', 'Inventario', 'inventory')}${navItem('users', 'Resguardantes', 'users')}${navItem('layout', 'Croquis', 'map')}${navItem('additional', 'Adicionales', 'add')}${navItem('notes', 'Notas', 'notes')}${navItem('reports', 'Reportes', 'reports')}${navItem('conciliation', 'Conciliación', 'scale')}${navItem('settings', 'Configuración', 'settings')}</nav><div class="sidebar-bottom"><button data-action="logout">${icon('logout', 'nav-icon')}<span>Cerrar sesión</span></button></div></aside><main class="workspace"><header class="topbar"><div><h1 class="page-title">Inventario Legislativo</h1><p class="page-subtitle">${escapeHtml(moduleNames[activeModule])}${activeUser ? ` · Resguardante activo: ${escapeHtml(activeUser.name)}` : ' · Sin resguardante activo'}</p></div><div class="topbar-actions"><span class="sync-status ${navigator.onLine ? '' : 'offline'}" role="status"><i class="sync-dot"></i>${connectionLabel()}</span>${installPrompt ? `<button class="icon-button install-button" data-action="install-app" title="Instalar aplicación" aria-label="Instalar aplicación">${icon('download')}</button>` : ''}<button class="icon-button" data-action="undo" title="Deshacer" ${history.length ? '' : 'disabled'}>${icon('undo')}</button><div class="auditor"><span class="auditor-avatar">${escapeHtml(shortName(state.auditor.name))}</span><div><strong>${escapeHtml(state.auditor.name)}</strong><span>Auditor en sesión</span></div></div></div></header>${content}</main></div>`;
   app.onclick = handleClick; app.onchange = handleChange; app.oninput = handleInput;
   if (activeModule === 'layout') void hydrateLayoutPlan();
 }
@@ -259,6 +261,7 @@ async function handleClick(event) {
   if (action === 'close-modal') { closeModal(); return; }
   if (action === 'nav') { activeModule = target.dataset.module; selected.clear(); render(); return; }
   if (action === 'logout') { state.auditor = null; await persist(); render(); return; }
+  if (action === 'install-app') { if (!installPrompt) { notify('La instalación se habilita cuando el navegador la ofrece.', 'warning'); return; } installPrompt.prompt(); const { outcome } = await installPrompt.userChoice; installPrompt = null; render(); notify(outcome === 'accepted' ? 'La instalación fue solicitada al navegador.' : 'La instalación se dejó pendiente.', outcome === 'accepted' ? 'success' : 'warning'); return; }
   if (action === 'undo') { const previous = history.pop(); if (!previous) return; state = previous; await persist(); notify('Se revirtió la última operación.'); render(); return; }
   if (action === 'choose-import') { $('#inventory-file')?.click(); return; }
   if (action === 'choose-conciliation') { $('#conciliation-file')?.click(); return; }
@@ -375,7 +378,11 @@ async function init() {
   };
   modalRoot.onchange = handleChange;
   state = normalizeBackup(await storage.load() || emptyState());
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=8').catch(() => {});
+  window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); installPrompt = event; if (state?.auditor) render(); });
+  window.addEventListener('appinstalled', () => { installPrompt = null; if (state?.auditor) { render(); notify('La aplicación se instaló correctamente.'); } });
+  window.addEventListener('online', () => { if (state?.auditor) { render(); notify('Conexión recuperada. Tus datos siguen guardados solo en este dispositivo.'); } });
+  window.addEventListener('offline', () => { if (state?.auditor) { render(); notify('Sin conexión: puedes seguir trabajando con los datos locales.', 'warning'); } });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=9').catch(() => {});
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
