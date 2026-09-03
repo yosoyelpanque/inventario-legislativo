@@ -19,9 +19,9 @@ const MAGIC_PROFILES = [
   ['^17WZ[A-Z0-9]{8,}', 'TELÉFONO', 'AVAYA', '9611G', 'Cámara']
 ].map(([regex, descripcion, marca, modelo, possession]) => ({ id: crypto.randomUUID(), regex, descripcion, marca, modelo, possession }));
 
-const SPACE_TYPES = ['ÁREA SECRETARIAL', 'RECEPCIÓN', 'CUBÍCULO', 'OFICINA', 'SALA DE JUNTAS', 'BODEGA', 'ARCHIVO', 'ALMACÉN', 'ÁREA DE TRABAJO', 'ESTACIONAMIENTO', 'PASILLO', 'COMEDOR', 'TALLER'];
-const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. D', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. J', 'EDIF. CENDI'];
-const FLOORS = ['SÓTANO', 'PLANTA BAJA', 'PISO PRINCIPAL', 'MEZZANINE', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'PISO 5', 'PISO 6', 'PISO 7', 'PISO 8', 'PISO 9', 'PISO 10', 'AZOTEA'];
+const SPACE_TYPES = ['ARCHIVO', 'AREA SECRETARIAL', 'BODEGA', 'CUBICULO', 'FOTOCOPIADO', 'PAPELERIA', 'MODULO', 'OFICINA', 'PASILLO', 'RECEPCION', 'SALA DE ESPERA', 'SALA DE JUNTAS', 'COCINA', 'COMEDOR', 'SITE', '(OTRO MANUAL)'];
+const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. CENDI', 'EDIF. TALLERES GRAFICOS', 'EDIF. RESGUARDO Y SEGURIDAD E1', 'EDIF. RESGUARDO Y SEGURIDAD P1', 'ESTACIONAMIENTO 1', 'ESTACIONAMIENTO 2', 'ESTACIONAMIENTO 3', 'ESTACIONAMIENTO 4', 'ESTACIONAMIENTO HELIPUERTO', '(OTRO MANUAL)'];
+const FLOORS = ['BASAMENTO', 'PLANTA BAJA', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'AZOTEA', 'SOTANO', '(OTRO MANUAL)'];
 
 const iconPaths = {
   inventory: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
@@ -58,7 +58,7 @@ let modalObjectUrls = [];
 
 function emptyState() {
   return {
-    schemaVersion: 4, auditor: null, activeUserId: '', inventory: [], users: [], additionalItems: [], notes: [],
+    schemaVersion: 5, auditor: null, activeUserId: '', inventory: [], users: [], additionalItems: [], notes: [],
     magicProfiles: structuredClone(MAGIC_PROFILES), activity: [], areaNames: {}, layouts: {}, updatedAt: Date.now()
   };
 }
@@ -84,14 +84,19 @@ function normalizeLocation(location, details = {}) {
 
 function normalizeBackup(source = {}) {
   const rawUsers = Array.isArray(source.users) && source.users.length ? source.users : (source.resguardantes || []);
-  const users = rawUsers.map((user) => ({
-    ...user,
-    id: user.id || uuid(),
-    name: String(user.name || user.nombre || '').trim(),
-    area: String(user.area || '').trim(),
-    photoKey: String(user.photoKey || ''),
-    locations: (user.locations || []).map((location) => normalizeLocation(location, user.locationDetails?.[location] || {})).filter((location) => location.name)
-  }));
+  const users = rawUsers.map((user) => {
+    const locations = (user.locations || []).map((location) => normalizeLocation(location, user.locationDetails?.[location] || {})).filter((location) => location.name);
+    const savedActiveId = String(user.activeLocationId || '');
+    return {
+      ...user,
+      id: user.id || uuid(),
+      name: String(user.name || user.nombre || '').trim(),
+      area: String(user.area || '').trim(),
+      photoKey: String(user.photoKey || ''),
+      locations,
+      activeLocationId: locations.some((location) => location.id === savedActiveId) ? savedActiveId : (locations.at(-1)?.id || '')
+    };
+  });
   const inventoryRows = (source.inventory || []).map((item) => ({
     id: item.id || uuid(), clave: normalizeKey(item.clave ?? item['CLAVE UNICA'] ?? ''),
     descripcion: item.descripcion ?? item.DESCRIPCION ?? item.DESCRripcion ?? '', marca: item.marca ?? item.MARCA ?? '',
@@ -113,7 +118,7 @@ function normalizeBackup(source = {}) {
     userId: item.userId || users.find((user) => user.name === item.usuario)?.id || '', location: item.location ?? item.ubicacionEspecifica ?? '', createdAt: item.createdAt || Date.now(), updatedAt: item.updatedAt || Date.now(), photoKey: item.photoKey || ''
   }));
   const layouts = Object.fromEntries(Object.entries(source.layouts || {}).map(([userId, layout]) => [userId, { planKey: String(layout?.planKey || ''), pins: Object.fromEntries(Object.entries(layout?.pins || {}).map(([name, pin]) => [name, { x: Number(pin?.x), y: Number(pin?.y) }])) }]));
-  return { ...emptyState(), ...source, users, inventory, additionalItems, notes: source.notes || [], layouts, magicProfiles: source.magicProfiles?.length ? source.magicProfiles : structuredClone(MAGIC_PROFILES), activity: source.activity || [] };
+  return { ...emptyState(), ...source, schemaVersion: 5, users, inventory, additionalItems, notes: source.notes || [], layouts, magicProfiles: source.magicProfiles?.length ? source.magicProfiles : structuredClone(MAGIC_PROFILES), activity: source.activity || [] };
 }
 
 async function persist() { state.updatedAt = Date.now(); await storage.save(state); }
@@ -128,9 +133,23 @@ function notify(message, type = 'success') {
 }
 
 function getActiveUser() { return state.users.find((user) => user.id === state.activeUserId); }
+function activeLocationFor(userId) {
+  const user = state.users.find((entry) => entry.id === userId);
+  const locations = user?.locations || [];
+  return locations.find((location) => location.id === user?.activeLocationId) || locations.at(-1) || null;
+}
+function activateUserLocation(userId, locationId) {
+  const user = state.users.find((entry) => entry.id === userId);
+  const location = user?.locations?.find((entry) => entry.id === locationId) || activeLocationFor(userId);
+  if (!user || !location) return;
+  state.activeUserId = userId;
+  user.activeLocationId = location.id;
+  layoutUserId = userId;
+  layoutLocationName = location.name;
+}
 function personName(userId) { return state.users.find((user) => user.id === userId)?.name || 'Sin asignar'; }
 function statuses() { return { total: state.inventory.length, located: state.inventory.filter((item) => item.status === 'ubicado').length, pending: state.inventory.filter((item) => item.status !== 'ubicado').length }; }
-function areas() { return [...new Set(state.inventory.map((item) => item.area).filter(Boolean))].sort(); }
+function areas() { return [...new Set([...state.inventory.map((item) => item.area), ...Object.keys(state.areaNames || {})].map((area) => String(area || '').trim()).filter(Boolean))].sort(); }
 function catalogValues(defaults, property) {
   const values = state.users.flatMap((user) => (user.locations || []).map((location) => location[property]).filter(Boolean));
   return [...new Set([...defaults, ...values].map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es-MX'));
@@ -140,7 +159,7 @@ function buildings() { return catalogValues(BUILDINGS, 'building'); }
 function floors() { return catalogValues(FLOORS, 'floor'); }
 function comparableName(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-MX'); }
 function userAreaOptions(selected = '') {
-  const values = [...new Set([...areas(), selected].filter(Boolean))].sort();
+  const values = [...new Set([...areas(), ...state.users.map((user) => user.area), selected].map((area) => String(area || '').trim()).filter(Boolean))].sort();
   return `<option value="">Selecciona un área cargada</option>${values.map((area) => `<option value="${escapeHtml(area)}" ${area === selected ? 'selected' : ''}>${escapeHtml(area)} ${escapeHtml(state.areaNames[area] || '')}</option>`).join('')}`;
 }
 function datalist(id, values) { return `<datalist id="${id}">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join('')}</datalist>`; }
@@ -149,19 +168,19 @@ function filteredInventory() {
   return state.inventory.filter((item) => (!inventoryFilters.area || item.area === inventoryFilters.area) && (!inventoryFilters.status || item.status === inventoryFilters.status) && (!query || [item.clave, item.descripcion, item.marca, item.modelo, item.serie, item.areaName, personName(item.userId)].join(' ').toLocaleLowerCase('es-MX').includes(query)));
 }
 function locationsFor(userId) { return state.users.find((user) => user.id === userId)?.locations || []; }
-function nextLocation(label, ignoreLocationId = '') {
-  const used = state.users.flatMap((user) => user.locations.filter((location) => location.id !== ignoreLocationId).map((location) => location.name));
+function nextLocation(label, ignoreLocationId = '', userId = '') {
+  const used = locationsFor(userId).filter((location) => location.id !== ignoreLocationId).map((location) => location.name);
   const base = label.trim().toUpperCase() || 'OFICINA';
   const nums = used.map((value) => value.match(new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+(\\d+)$`))?.[1]).filter(Boolean).map(Number);
   return `${base} ${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
 }
-function locationValues(form, ignoreLocationId = '') {
+function locationValues(form, ignoreLocationId = '', userId = '') {
   const type = String(form.get('spaceType') || '').trim().toLocaleUpperCase('es-MX');
   const customName = String(form.get('locationName') || '').trim().toLocaleUpperCase('es-MX');
   return {
     id: ignoreLocationId || uuid(),
     type: type || 'OFICINA',
-    name: customName || nextLocation(type, ignoreLocationId),
+    name: customName || nextLocation(type, ignoreLocationId, userId),
     building: String(form.get('building') || '').trim().toLocaleUpperCase('es-MX'),
     floor: String(form.get('floor') || '').trim().toLocaleUpperCase('es-MX'),
     photoKey: ''
@@ -191,7 +210,7 @@ function connectionLabel() { return navigator.onLine ? 'Guardado local · en lí
 function shell() {
   const activeUser = getActiveUser();
   const content = ({ inventory: inventoryModule, users: usersModule, layout: layoutModule, additional: additionalModule, notes: notesModule, reports: reportsModule, conciliation: conciliationModule, settings: settingsModule })[activeModule]();
-  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><div class="brand"><img src="./assets/camara-logo.png" alt="Escudo de la Cámara de Diputados" /><div class="brand-caption"><strong>Cámara de<br>Diputados</strong><span>LXVI Legislatura</span></div></div><nav class="main-nav" aria-label="Módulos principales">${navItem('inventory', 'Inventario', 'inventory')}${navItem('users', 'Resguardantes', 'users')}${navItem('layout', 'Croquis', 'map')}${navItem('additional', 'Adicionales', 'add')}${navItem('notes', 'Notas', 'notes')}${navItem('reports', 'Reportes', 'reports')}${navItem('conciliation', 'Conciliación', 'scale')}${navItem('settings', 'Configuración', 'settings')}</nav><div class="sidebar-bottom"><button data-action="logout">${icon('logout', 'nav-icon')}<span>Cerrar sesión</span></button></div></aside><main class="workspace"><header class="topbar"><div><h1 class="page-title">Inventario Legislativo</h1><p class="page-subtitle">${escapeHtml(moduleNames[activeModule])}${activeUser ? ` · Resguardante activo: ${escapeHtml(activeUser.name)}` : ' · Sin resguardante activo'}</p></div><div class="topbar-actions"><span class="sync-status ${navigator.onLine ? '' : 'offline'}" role="status"><i class="sync-dot"></i>${connectionLabel()}</span>${installPrompt ? `<button class="icon-button install-button" data-action="install-app" title="Instalar aplicación" aria-label="Instalar aplicación">${icon('download')}</button>` : ''}<button class="icon-button" data-action="undo" title="Deshacer" ${history.length ? '' : 'disabled'}>${icon('undo')}</button><div class="auditor"><span class="auditor-avatar">${escapeHtml(shortName(state.auditor.name))}</span><div><strong>${escapeHtml(state.auditor.name)}</strong><span>Auditor en sesión</span></div></div></div></header>${content}</main></div>`;
+  app.innerHTML = `<div class="app-shell"><aside class="sidebar"><div class="brand"><img src="./assets/camara-logo.png" alt="Escudo de la Cámara de Diputados" /><div class="brand-caption"><strong>Cámara de<br>Diputados</strong><span>LXVI Legislatura</span></div></div><nav class="main-nav" aria-label="Módulos principales">${navItem('inventory', 'Inventario', 'inventory')}${navItem('users', 'Resguardantes', 'users')}${navItem('layout', 'Croquis', 'map')}${navItem('additional', 'Adicionales', 'add')}${navItem('notes', 'Notas', 'notes')}${navItem('reports', 'Reportes', 'reports')}${navItem('conciliation', 'Conciliación', 'scale')}${navItem('settings', 'Configuración', 'settings')}</nav><div class="sidebar-bottom"><button data-action="logout">${icon('logout', 'nav-icon')}<span>Cerrar sesión</span></button></div></aside><main class="workspace"><header class="topbar"><div><h1 class="page-title">Inventario Legislativo</h1><p class="page-subtitle">${escapeHtml(moduleNames[activeModule])}${activeUser ? ` · Resguardante activo: ${escapeHtml(activeUser.name)}${activeLocationFor(activeUser.id) ? ` · Ubicación: ${escapeHtml(activeLocationFor(activeUser.id).name)}` : ''}` : ' · Sin resguardante activo'}</p></div><div class="topbar-actions"><span class="sync-status ${navigator.onLine ? '' : 'offline'}" role="status"><i class="sync-dot"></i>${connectionLabel()}</span>${installPrompt ? `<button class="icon-button install-button" data-action="install-app" title="Instalar aplicación" aria-label="Instalar aplicación">${icon('download')}</button>` : ''}<button class="icon-button" data-action="undo" title="Deshacer" ${history.length ? '' : 'disabled'}>${icon('undo')}</button><div class="auditor"><span class="auditor-avatar">${escapeHtml(shortName(state.auditor.name))}</span><div><strong>${escapeHtml(state.auditor.name)}</strong><span>Auditor en sesión</span></div></div></div></header>${content}</main></div>`;
   app.onclick = handleClick; app.onchange = handleChange; app.oninput = handleInput;
   if (activeModule === 'layout') void hydrateLayoutPlan();
 }
@@ -222,9 +241,10 @@ function locationFieldsMarkup(prefix, location = {}) {
 
 function usersModule() {
   const rows = state.users.map((user) => {
-    const locations = user.locations || []; const latest = locations.at(-1);
+    const locations = user.locations || []; const latest = locations.at(-1); const activeLocation = activeLocationFor(user.id);
     const chips = locations.map((location) => `<span class="location-chip">${icon('pin')} ${escapeHtml(location.name)}</span>`).join('') || '<span class="location-chip muted">Sin ubicaciones</span>';
-    return `<article class="user-row user-card ${user.id === state.activeUserId ? 'active-user' : ''}"><div class="user-identity"><span class="user-avatar">${escapeHtml(shortName(user.name || '?'))}</span><div><strong>${escapeHtml(user.name)}</strong><span>Área ${escapeHtml(user.area || 'sin asignar')} · ${locations.length} ${locations.length === 1 ? 'ubicación' : 'ubicaciones'}${latest ? ` · Última: ${escapeHtml(latest.name)}` : ''}</span><div class="location-chips">${chips}</div></div></div><div class="user-actions">${user.id === state.activeUserId ? '<span class="tag">Activo</span>' : ''}<button class="btn secondary small" data-action="edit-user" data-id="${user.id}">${icon('pencil')} Gestionar</button><button class="btn secondary small" data-action="activate-user" data-id="${user.id}">${user.id === state.activeUserId ? 'Quitar' : 'Activar'}</button></div></article>`;
+    const selector = locations.length ? `<label class="user-location-selector">Ubicación para registrar bienes<select data-user-location-select data-user-id="${user.id}">${locations.map((location) => `<option value="${location.id}" ${location.id === activeLocation?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('')}</select></label>` : '';
+    return `<article class="user-row user-card ${user.id === state.activeUserId ? 'active-user' : ''}"><div class="user-identity"><span class="user-avatar">${escapeHtml(shortName(user.name || '?'))}</span><div><strong>${escapeHtml(user.name)}</strong><span>Área ${escapeHtml(user.area || 'sin asignar')} · ${locations.length} ${locations.length === 1 ? 'ubicación' : 'ubicaciones'}${latest ? ` · Última: ${escapeHtml(latest.name)}` : ''}</span>${selector}<div class="location-chips">${chips}</div></div></div><div class="user-actions">${user.id === state.activeUserId ? '<span class="tag">Activo</span>' : ''}<button class="btn secondary small" data-action="edit-user" data-id="${user.id}">${icon('pencil')} Gestionar</button><button class="btn secondary small" data-action="activate-user" data-id="${user.id}">${user.id === state.activeUserId ? 'Quitar' : 'Activar'}</button></div></article>`;
   }).join('') || `<div class="empty-state"><div><h2>Aún no hay resguardantes</h2><p>Crea el primer resguardante y una ubicación para asignar bienes desde el inventario.</p></div></div>`;
   const areaReady = areas().length > 0;
   return `<section class="module"><div class="two-column"><section class="form-panel"><h2>Nuevo resguardante</h2><p>El área se toma de los listados cargados. Los catálogos de ubicación conservan valores editables y aprenden los nuevos registros.</p><form id="user-form" class="form-grid"><div class="field span-2"><label for="user-name">Nombre completo</label><input id="user-name" name="name" required autocomplete="name" placeholder="Nombre de la persona responsable" /></div><div class="field span-2"><label for="user-area">Área</label><select id="user-area" name="area" required ${areaReady ? '' : 'disabled'}>${userAreaOptions()}</select>${areaReady ? '' : '<small class="field-hint">Carga al menos un listado para habilitar las áreas.</small>'}</div>${locationFieldsMarkup('user')}<div class="field"><label for="user-photo-new">Foto del resguardante</label><input id="user-photo-new" name="userPhoto" type="file" accept="image/*" capture="user" /></div><div class="field"><label for="location-photo-new">Foto de la primera ubicación</label><input id="location-photo-new" name="locationPhoto" type="file" accept="image/*" capture="environment" /></div><div class="form-actions span-2"><button class="btn" type="submit" ${areaReady ? '' : 'disabled'}>${icon('add')} Crear resguardante</button></div></form></section><section class="module-panel"><div class="panel-heading"><div><h2>Resguardantes registrados</h2><p>${state.users.length} personas · ${state.users.reduce((count, user) => count + (user.locations || []).length, 0)} ubicaciones</p></div></div><div class="users-list">${rows}</div></section></div></section>`;
@@ -262,7 +282,7 @@ function layoutModule() {
   const user = state.users.find((entry) => entry.id === layoutUserId) || getActiveUser() || state.users[0];
   layoutUserId = user.id;
   const locations = user.locations || [];
-  if (!locations.some((location) => location.name === layoutLocationName)) layoutLocationName = locations[0]?.name || '';
+  if (!locations.some((location) => location.name === layoutLocationName)) layoutLocationName = activeLocationFor(user.id)?.name || locations[0]?.name || '';
   const layout = state.layouts?.[user.id] || { planKey: '', pins: {} };
   const allItems = [...state.inventory, ...state.additionalItems].filter((item) => item.userId === user.id);
   const userOptions = state.users.map((entry) => `<option value="${entry.id}" ${entry.id === user.id ? 'selected' : ''}>${escapeHtml(entry.name)} · ${escapeHtml(entry.area || 'Sin área')}</option>`).join('');
@@ -321,6 +341,29 @@ function openLocationEditor(userId, locationId = '') {
   openModal(editing ? `Editar ${location.name}` : `Agregar ubicación a ${user.name}`, `<form id="location-form" class="form-grid" data-user-id="${user.id}" data-location-id="${location?.id || ''}">${locationFieldsMarkup('location-editor', location || {})}<p class="form-tip span-2">Si dejas vacío el nombre visible, se asignará automáticamente el siguiente consecutivo del tipo de espacio.</p></form>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn" type="submit" form="location-form">${editing ? 'Guardar ubicación' : 'Agregar ubicación'}</button>` });
 }
 
+function openLocationReassignment(sourceUserId, sourceLocationId) {
+  const sourceUser = state.users.find((user) => user.id === sourceUserId);
+  const sourceLocation = sourceUser?.locations?.find((location) => location.id === sourceLocationId);
+  if (!sourceUser || !sourceLocation) return;
+  const linked = relatedItems(sourceUserId, sourceLocation.name);
+  const candidates = state.users.filter((user) => (user.locations || []).some((location) => user.id !== sourceUserId || location.id !== sourceLocationId));
+  const preferred = candidates.find((user) => user.id === sourceUserId) || candidates[0];
+  const userOptions = candidates.map((user) => `<option value="${user.id}" ${user.id === preferred?.id ? 'selected' : ''}>${escapeHtml(user.name)} · ${escapeHtml(user.area || 'Sin área')}</option>`).join('');
+  openModal('Reasignar bienes antes de eliminar ubicación', `<p class="page-subtitle">${linked.length} bien${linked.length === 1 ? '' : 'es'} está${linked.length === 1 ? '' : 'n'} asignado${linked.length === 1 ? '' : 's'} a <strong>${escapeHtml(sourceLocation.name)}</strong>. Selecciona otra ubicación del mismo resguardante o de otro; después podrás eliminar esta ubicación.</p><div class="form-grid"><div class="field span-2"><label for="relocate-user">Nuevo resguardante</label><select id="relocate-user">${userOptions || '<option value="">No hay otra ubicación disponible</option>'}</select></div><div class="field span-2"><label for="relocate-location">Nueva ubicación</label><select id="relocate-location"></select></div></div>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${sourceUserId}">Cancelar</button><button class="btn" data-action="commit-location-reassignment" data-source-user-id="${sourceUserId}" data-source-location-id="${sourceLocationId}">Reasignar bienes</button>` });
+  updateLocationReassignmentOptions();
+}
+
+function updateLocationReassignmentOptions() {
+  const userId = $('#relocate-user')?.value;
+  const select = $('#relocate-location');
+  const commit = $('[data-action="commit-location-reassignment"]');
+  if (!select || !commit) return;
+  const options = locationsFor(userId).filter((location) => !(userId === commit.dataset.sourceUserId && location.id === commit.dataset.sourceLocationId));
+  const preferred = activeLocationFor(userId);
+  select.innerHTML = options.length ? options.map((location) => `<option value="${location.id}" ${location.id === preferred?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('') : '<option value="">No hay otra ubicación disponible</option>';
+  commit.disabled = !options.length;
+}
+
 function openDuplicateUserModal(user, proposedName) {
   const suggestion = suggestedSimilarName(proposedName);
   openModal('Resguardante ya registrado', `<p class="page-subtitle">${escapeHtml(user.name)} ya está registrado en el área ${escapeHtml(user.area || 'sin asignar')}. Puedes añadirle otra ubicación o crear un registro similar con un nombre diferenciado.</p>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn secondary" data-action="duplicate-add-location" data-user-id="${user.id}">${icon('add')} Agregar ubicación</button><button class="btn" data-action="duplicate-similar" data-suggestion="${escapeHtml(suggestion)}">Usar “${escapeHtml(suggestion)}”</button>` });
@@ -341,7 +384,7 @@ function openAssign(ids = [...selected]) {
   openModal('Asignar ubicación', `<p class="page-subtitle">${targets.length} bien${targets.length === 1 ? '' : 'es'} será${targets.length === 1 ? '' : 'n'} marcado${targets.length === 1 ? '' : 's'} como ubicado${targets.length === 1 ? '' : 's'}.</p><div class="form-grid"><div class="field span-2"><label>Resguardante</label><select id="assign-user"><option value="">Selecciona una persona</option>${options}</select></div><div class="field span-2"><label>Ubicación</label><select id="assign-location"><option value="">Primero selecciona un resguardante</option></select></div></div>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn" data-action="commit-assign" data-ids="${targets.join(',')}">Asignar bienes</button>` });
   $('#assign-user').onchange = () => updateAssignLocations(); updateAssignLocations();
 }
-function updateAssignLocations() { const userId = $('#assign-user')?.value; const locations = locationsFor(userId); const select = $('#assign-location'); if (select) select.innerHTML = `<option value="">Selecciona una ubicación</option>${locations.map((location) => `<option value="${escapeHtml(location.name)}">${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('')}`; }
+function updateAssignLocations() { const userId = $('#assign-user')?.value; const locations = locationsFor(userId); const activeLocation = activeLocationFor(userId); const select = $('#assign-location'); if (select) select.innerHTML = `<option value="">Selecciona una ubicación</option>${locations.map((location) => `<option value="${escapeHtml(location.name)}" ${location.id === activeLocation?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('')}`; }
 
 function openNote(ids = [...selected]) {
   const itemIds = ids.filter((id) => state.inventory.some((item) => item.id === id));
@@ -355,7 +398,9 @@ function openStandaloneNote() {
 }
 
 function demoData() {
-  const users = [{ id: uuid(), name: 'RESPONSABLE DEMO 01', area: '0604500', locations: [{ name: 'OFICINA 01', building: 'EDIFICIO DEMO', floor: 'PLANTA BAJA' }] }, { id: uuid(), name: 'RESPONSABLE DEMO 02', area: '0604500', locations: [{ name: 'BODEGA 01', building: 'EDIFICIO DEMO', floor: 'PLANTA BAJA' }] }];
+  const office = { id: uuid(), name: 'OFICINA 01', type: 'OFICINA', building: 'EDIFICIO DEMO', floor: 'PLANTA BAJA', photoKey: '' };
+  const warehouse = { id: uuid(), name: 'BODEGA 01', type: 'BODEGA', building: 'EDIFICIO DEMO', floor: 'PLANTA BAJA', photoKey: '' };
+  const users = [{ id: uuid(), name: 'RESPONSABLE DEMO 01', area: '0604500', activeLocationId: office.id, locations: [office] }, { id: uuid(), name: 'RESPONSABLE DEMO 02', area: '0604500', activeLocationId: warehouse.id, locations: [warehouse] }];
   const items = [['22632', 'ARCHIVERO DE MADERA CON 3 GAVETAS', 'SELTA', 'SIN MODELO', 'SIN SERIE 22632'], ['25468', 'ARCHIVERO DE MADERA CON 4 GAVETAS', 'SELTA', 'SIN MODELO A', 'SIN SERIE 25468'], ['.26463', 'CESTO PARA BASURA DE MADERA', 'SIN MARCA', 'LINEA EVOLUTION', ''], ['100976', 'ARCHIVERO DE MADERA CHAPA ENCINO', 'SIN MARCA', 'SIN MODELO', '']].map(([clave, descripcion, marca, modelo, serie], index) => ({ id: uuid(), clave, descripcion, marca, modelo, serie, area: '0604500', areaName: 'SUBDIRECCIÓN DEL CENTRO DE DESARROLLO INFANTIL', bookType: index < 2 ? 'CÁMARA' : 'BIENES MENORES', source: 'Demostración', status: index < 2 ? 'ubicado' : 'pendiente', retag: index === 1, userId: index < 2 ? users[0].id : '', location: index < 2 ? 'OFICINA 01' : '', createdAt: Date.now(), updatedAt: Date.now() }));
   return { users, items };
 }
@@ -382,7 +427,7 @@ async function handleClick(event) {
   if (action === 'additional-detail') { await showDetail(target.dataset.id, true); return; }
   if (action === 'assign') { openAssign(); return; }
   if (action === 'open-assign') { openAssign([target.dataset.id]); return; }
-  if (action === 'commit-assign') { const userId = $('#assign-user').value; const location = $('#assign-location').value; const ids = target.dataset.ids.split(','); if (!userId || !location) { notify('Selecciona resguardante y ubicación.', 'warning'); return; } await mutate(() => { ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) Object.assign(item, { userId, location, status: 'ubicado', retag: true, updatedAt: Date.now() }); }); state.activeUserId = userId; selected.clear(); }, `Se asignaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} a ${personName(userId)}.`); closeModal(); return; }
+  if (action === 'commit-assign') { const userId = $('#assign-user').value; const location = $('#assign-location').value; const ids = target.dataset.ids.split(','); if (!userId || !location) { notify('Selecciona resguardante y ubicación.', 'warning'); return; } await mutate(() => { const selectedLocation = locationsFor(userId).find((entry) => entry.name === location); ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) Object.assign(item, { userId, location, status: 'ubicado', retag: true, updatedAt: Date.now() }); }); activateUserLocation(userId, selectedLocation?.id); selected.clear(); }, `Se asignaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} a ${personName(userId)}.`); closeModal(); return; }
   if (action === 'retag') { const ids = [...selected]; if (!ids.length) { notify('Selecciona bienes para marcarlos para re-etiquetado.', 'warning'); return; } await mutate(() => ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) item.retag = true; }), `Se marcaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} para re-etiquetado.`); return; }
   if (action === 'bulk-note') { openNote(); return; }
   if (action === 'new-note') { openStandaloneNote(); return; }
@@ -397,9 +442,10 @@ async function handleClick(event) {
   if (action === 'choose-location-photo') { const input = $('#location-photo-input'); if (input) { input.dataset.userId = target.dataset.userId; input.dataset.locationId = target.dataset.locationId; input.click(); } return; }
   if (action === 'remove-user-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user?.photoKey) return; const key = user.photoKey; confirmModal('Quitar foto del resguardante', 'La fotografía se eliminará de este dispositivo. Esta acción no modifica los bienes asignados.', async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (current) current.photoKey = ''; }, 'Se quitó la foto del resguardante.'); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
   if (action === 'remove-location-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location?.photoKey) return; const key = location.photoKey; confirmModal('Quitar foto de ubicación', `La fotografía de ${location.name} se eliminará de este dispositivo.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const targetLocation = current?.locations?.find((entry) => entry.id === location.id); if (targetLocation) targetLocation.photoKey = ''; }, `Se quitó la foto de ${location.name}.`); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
-  if (action === 'remove-location') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location) return; const linked = relatedItems(user.id, location.name); if (linked.length) { notify(`No se puede eliminar ${location.name}: tiene ${linked.length} bien${linked.length === 1 ? '' : 'es'} asignado${linked.length === 1 ? '' : 's'}. Reasígnalos primero.`, 'warning'); return; } const photoKey = location.photoKey; confirmModal('Eliminar ubicación', `Se eliminará ${location.name} del resguardante. No hay bienes vinculados a esta ubicación.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations = current.locations.filter((entry) => entry.id !== location.id); const layout = state.layouts?.[current.id]; if (layout?.pins?.[location.name]) { const pins = { ...layout.pins }; delete pins[location.name]; state.layouts[current.id] = { ...layout, pins }; } layoutUserId = current.id; layoutLocationName = current.locations.at(-1)?.name || ''; }, `Se eliminó la ubicación ${location.name}.`); if (photoKey) await storage.deletePhoto(photoKey); await openUserEditor(user.id); }, 'Eliminar ubicación', true); return; }
+  if (action === 'remove-location') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location) return; const linked = relatedItems(user.id, location.name); if (linked.length) { openLocationReassignment(user.id, location.id); return; } const photoKey = location.photoKey; confirmModal('Eliminar ubicación', `Se eliminará ${location.name} del resguardante. No hay bienes vinculados a esta ubicación.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations = current.locations.filter((entry) => entry.id !== location.id); current.activeLocationId = current.locations.at(-1)?.id || ''; const layout = state.layouts?.[current.id]; if (layout?.pins?.[location.name]) { const pins = { ...layout.pins }; delete pins[location.name]; state.layouts[current.id] = { ...layout, pins }; } layoutUserId = current.id; layoutLocationName = activeLocationFor(current.id)?.name || ''; }, `Se eliminó la ubicación ${location.name}.`); if (photoKey) await storage.deletePhoto(photoKey); await openUserEditor(user.id); }, 'Eliminar ubicación', true); return; }
+  if (action === 'commit-location-reassignment') { const sourceUserId = target.dataset.sourceUserId; const sourceLocationId = target.dataset.sourceLocationId; const sourceUser = state.users.find((user) => user.id === sourceUserId); const sourceLocation = sourceUser?.locations?.find((location) => location.id === sourceLocationId); const targetUserId = $('#relocate-user')?.value; const targetLocationId = $('#relocate-location')?.value; const targetUser = state.users.find((user) => user.id === targetUserId); const targetLocation = targetUser?.locations?.find((location) => location.id === targetLocationId); if (!sourceUser || !sourceLocation || !targetUser || !targetLocation) { notify('Selecciona una ubicación de destino válida.', 'warning'); return; } let moved = 0; await mutate(() => { [...state.inventory, ...state.additionalItems].forEach((item) => { if (item.userId === sourceUserId && item.location === sourceLocation.name) { Object.assign(item, { userId: targetUser.id, location: targetLocation.name, status: item.status === 'pendiente' ? 'ubicado' : item.status, updatedAt: Date.now() }); moved++; } }); activateUserLocation(targetUser.id, targetLocation.id); }, `Se reasignaron ${moved} bien${moved === 1 ? '' : 'es'} a ${targetUser.name} · ${targetLocation.name}.`); closeModal(); await openUserEditor(sourceUserId); return; }
   if (action === 'delete-user') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user) return; const linked = relatedItems(user.id); const photoKeys = [user.photoKey, ...(user.locations || []).map((location) => location.photoKey), state.layouts?.[user.id]?.planKey].filter(Boolean); confirmModal('Eliminar resguardante', `${user.name} se eliminará. Sus ${linked.length} bien${linked.length === 1 ? '' : 'es'} quedarán sin resguardante y, en inventario, volverán a pendiente. También se eliminarán sus fotografías locales.`, async () => { await mutate(() => { state.inventory.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', status: 'pendiente', updatedAt: Date.now() }); }); state.additionalItems.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', updatedAt: Date.now() }); }); state.users = state.users.filter((entry) => entry.id !== user.id); if (state.activeUserId === user.id) state.activeUserId = ''; if (layoutUserId === user.id) { layoutUserId = ''; layoutLocationName = ''; } delete state.layouts[user.id]; }, `Se eliminó a ${user.name} y se desvincularon ${linked.length} bienes.`); await Promise.all(photoKeys.map((key) => storage.deletePhoto(key))); }, 'Eliminar resguardante', true); return; }
-  if (action === 'activate-user') { const id = target.dataset.id; await mutate(() => { state.activeUserId = state.activeUserId === id ? '' : id; }, state.activeUserId === id ? 'Se desactivó el resguardante de contexto.' : `Se activó a ${personName(id)} como resguardante de contexto.`); return; }
+  if (action === 'activate-user') { const id = target.dataset.id; const willDeactivate = state.activeUserId === id; await mutate(() => { if (willDeactivate) state.activeUserId = ''; else activateUserLocation(id, activeLocationFor(id)?.id); }, willDeactivate ? 'Se desactivó el resguardante de contexto.' : `Se activó a ${personName(id)} y su ubicación seleccionada.`); return; }
   if (action === 'magic-fill') { magicFillForm(); return; }
   if (action === 'bulk-magic') { let changes = 0; await mutate(() => { state.additionalItems.forEach((item) => { const profile = matchProfile(item.serie); if (profile) { Object.assign(item, { descripcion: profile.descripcion, marca: profile.marca, modelo: profile.modelo, possession: profile.possession, updatedAt: Date.now() }); changes++; } }); }, 'Se aplicaron perfiles de autollenado.'); notify(changes ? `${changes} adicional${changes === 1 ? '' : 'es'} actualizado${changes === 1 ? '' : 's'}.` : 'No hubo series que coincidieran con un perfil.', changes ? 'success' : 'warning'); return; }
   if (action === 'make-report') { const filters = { area: $('#report-area')?.value || '', userId: $('#report-user')?.value || '' }; $('#print-root').innerHTML = reportMarkup(state, target.dataset.report, filters); window.print(); return; }
@@ -422,7 +468,9 @@ async function handleChange(event) {
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
-  if (event.target.id === 'layout-user-select') { layoutUserId = event.target.value; layoutLocationName = locationsFor(layoutUserId)[0]?.name || ''; render(); return; }
+  if (event.target.id === 'relocate-user') { updateLocationReassignmentOptions(); return; }
+  if (event.target.matches('[data-user-location-select]')) { const userId = event.target.dataset.userId; const locationId = event.target.value; const location = locationsFor(userId).find((entry) => entry.id === locationId); if (!location) return; await mutate(() => activateUserLocation(userId, locationId), `Se dejó ${location.name} como ubicación activa de ${personName(userId)}.`); return; }
+  if (event.target.id === 'layout-user-select') { layoutUserId = event.target.value; layoutLocationName = activeLocationFor(layoutUserId)?.name || locationsFor(layoutUserId)[0]?.name || ''; render(); return; }
   if (event.target.id === 'layout-location-select') { layoutLocationName = event.target.value; render(); return; }
   if (event.target.matches('[data-file]')) { await handleFile(event.target.dataset.file, event.target.files); event.target.value = ''; return; }
   if (event.target.id === 'user-photo-input') { const userId = event.target.dataset.userId; const saved = await saveUserPhotoFile(userId, event.target.files?.[0]); if (saved) await openUserEditor(userId); event.target.value = ''; return; }
@@ -478,9 +526,9 @@ document.addEventListener('submit', async (event) => {
   if (event.target.id === 'user-form') {
     event.preventDefault(); const form = new FormData(event.target); const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
     const existing = state.users.find((user) => comparableName(user.name) === comparableName(name)); if (existing) { openDuplicateUserModal(existing, name); return; }
-    const location = locationValues(form); const user = { id: uuid(), name, area, photoKey: '', locations: [location] };
+    const user = { id: uuid(), name, area, photoKey: '', activeLocationId: '', locations: [] }; const location = locationValues(form, '', user.id); user.locations = [location]; user.activeLocationId = location.id;
     const userPhoto = selectedPhoto(form, 'userPhoto'); const locationPhoto = selectedPhoto(form, 'locationPhoto'); if (!validPhoto(userPhoto) || !validPhoto(locationPhoto)) return;
-    await mutate(() => { state.users.push(user); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se registró a ${name} con ${location.name}.`);
+    await mutate(() => { state.users.push(user); activateUserLocation(user.id, location.id); }, `Se registró a ${name} con ${location.name}.`);
     if (userPhoto) await saveUserPhotoFile(user.id, userPhoto);
     if (locationPhoto) await saveLocationPhotoFile(user.id, location.id, locationPhoto);
     return;
@@ -494,16 +542,16 @@ document.addEventListener('submit', async (event) => {
   }
   if (event.target.id === 'location-form') {
     event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
-    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId); if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
+    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId, user.id); if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
     if (previous) {
       const previousName = previous.name; location.photoKey = previous.photoKey || ''; let changed = 0;
-      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const target = current?.locations?.find((entry) => entry.id === previous.id); if (!target) return; Object.assign(target, location); changed = renameLocationReferences(user.id, previousName, location.name); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se actualizó ${location.name}${changed ? ` y ${changed} bien${changed === 1 ? '' : 'es'} vinculado${changed === 1 ? '' : 's'}` : ''}.`);
+      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const target = current?.locations?.find((entry) => entry.id === previous.id); if (!target) return; Object.assign(target, location); changed = renameLocationReferences(user.id, previousName, location.name); activateUserLocation(user.id, location.id); }, `Se actualizó ${location.name}${changed ? ` y ${changed} bien${changed === 1 ? '' : 'es'} vinculado${changed === 1 ? '' : 's'}` : ''}.`);
     } else {
-      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations.push(location); state.activeUserId = user.id; layoutUserId = user.id; layoutLocationName = location.name; }, `Se agregó ${location.name} a ${user.name}.`);
+      await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations.push(location); activateUserLocation(user.id, location.id); }, `Se agregó ${location.name} a ${user.name}.`);
     }
     await openUserEditor(user.id); return;
   }
-  if (event.target.id === 'additional-form') { event.preventDefault(); const form = new FormData(event.target); const series = String(form.get('serie')).trim().toUpperCase(); const userId = String(form.get('userId')); const possession = String(form.get('possession')); const personal = form.get('personal') === 'on'; let key = String(form.get('clave')).trim(); if (!key && possession === 'Cámara' && !personal) key = nextAdditionalKey(userId); if (!key) { notify('La clave única es obligatoria para este tipo de posesión.', 'warning'); return; } if (!String(form.get('descripcion')).trim()) { notify('Agrega una descripción para el bien adicional.', 'warning'); return; } const duplicate = [...state.inventory, ...state.additionalItems].find((item) => item.serie && item.serie.toUpperCase() === series); if (duplicate) { notify(`La serie ya existe en ${duplicate.clave}. Revisa el registro antes de continuar.`, 'warning'); } await mutate(() => state.additionalItems.push({ id: uuid(), clave: key, descripcion: String(form.get('descripcion')).trim(), marca: String(form.get('marca')).trim(), modelo: String(form.get('modelo')).trim(), serie: series, possession, personal, detail: String(form.get('detail')).trim() || (possession === 'Arrendamiento' ? 'LXVIDG AJ- 070/2024' : ''), userId, location: locationsFor(userId)[0]?.name || '', createdAt: Date.now(), updatedAt: Date.now() }), `Se registró el adicional ${key || 'sin clave'}.`); return; }
+  if (event.target.id === 'additional-form') { event.preventDefault(); const form = new FormData(event.target); const series = String(form.get('serie')).trim().toUpperCase(); const userId = String(form.get('userId')); const possession = String(form.get('possession')); const personal = form.get('personal') === 'on'; let key = String(form.get('clave')).trim(); if (!key && possession === 'Cámara' && !personal) key = nextAdditionalKey(userId); if (!key) { notify('La clave única es obligatoria para este tipo de posesión.', 'warning'); return; } if (!String(form.get('descripcion')).trim()) { notify('Agrega una descripción para el bien adicional.', 'warning'); return; } const duplicate = [...state.inventory, ...state.additionalItems].find((item) => item.serie && item.serie.toUpperCase() === series); if (duplicate) { notify(`La serie ya existe en ${duplicate.clave}. Revisa el registro antes de continuar.`, 'warning'); } await mutate(() => state.additionalItems.push({ id: uuid(), clave: key, descripcion: String(form.get('descripcion')).trim(), marca: String(form.get('marca')).trim(), modelo: String(form.get('modelo')).trim(), serie: series, possession, personal, detail: String(form.get('detail')).trim() || (possession === 'Arrendamiento' ? 'LXVIDG AJ- 070/2024' : ''), userId, location: activeLocationFor(userId)?.name || '', createdAt: Date.now(), updatedAt: Date.now() }), `Se registró el adicional ${key || 'sin clave'}.`); return; }
   if (event.target.id === 'profile-form') { event.preventDefault(); const form = new FormData(event.target); const [marca, modelo] = String(form.get('marcaModelo')).split('|').map((part) => part.trim()); try { new RegExp(String(form.get('regex'))); } catch { notify('La expresión regular no es válida.', 'error'); return; } await mutate(() => state.magicProfiles.push({ id: uuid(), regex: String(form.get('regex')).trim(), descripcion: String(form.get('descripcion')).trim(), marca, modelo, possession: String(form.get('possession')) }), 'Se agregó un perfil de autollenado.'); return; }
 });
 
@@ -517,7 +565,7 @@ async function handleFile(kind, files) {
     if (kind === 'layout-plan') { await saveLayoutPlan(files[0]); return; }
     if (kind === 'inventory' || kind === 'conciliation') {
       notify(`Leyendo ${files.length} archivo${files.length === 1 ? '' : 's'}…`); const results = await parseInventoryFiles(files); const incoming = results.flatMap(({ result }) => result.items); const metadata = results.map(({ result }) => result).filter((result) => result.area);
-      if (kind === 'inventory') { const existing = new Set(state.inventory.map((item) => item.clave)); const fresh = incoming.filter((item) => !existing.has(item.clave)); await mutate(() => { state.inventory.push(...fresh); metadata.forEach((result) => { if (result.areaName) state.areaNames[result.area] = result.areaName; }); }, `Se importaron ${fresh.length} bienes desde ${files.length} libro${files.length === 1 ? '' : 's'}.`); notify(`${fresh.length} bienes cargados; ${incoming.length - fresh.length} duplicados omitidos.`); }
+      if (kind === 'inventory') { const existing = new Set(state.inventory.map((item) => item.clave)); const fresh = incoming.filter((item) => !existing.has(item.clave)); await mutate(() => { state.inventory.push(...fresh); metadata.forEach((result) => { state.areaNames[result.area] = result.areaName || state.areaNames[result.area] || ''; }); }, `Se importaron ${fresh.length} bienes desde ${files.length} libro${files.length === 1 ? '' : 's'}.`); notify(`${fresh.length} bienes cargados; ${incoming.length - fresh.length} duplicados omitidos.`); }
       else { conciliation = compareInventory(incoming); render(); notify(`Conciliación preparada con ${incoming.length} registros fuente.`); }
     }
     if (kind === 'restore' || kind === 'merge') { const incoming = normalizeBackup(await readBackup(files[0])); if (kind === 'restore') { confirmModal('Restaurar respaldo', 'La restauración reemplazará los datos locales actuales. Esta operación no se puede deshacer después de cerrar esta sesión.', async () => { snapshot(); state = incoming; await persist(); activeModule = 'inventory'; render(); notify('Respaldo restaurado.'); }, 'Restaurar', true); } else { confirmModal('Fusionar respaldo', 'Se agregarán bienes, adicionales y ubicaciones que no existan. Los conflictos de una misma clave se mantendrán en la sesión actual para su revisión.', async () => { await mutate(() => mergeBackup(incoming), 'Se fusionó un respaldo externo con la sesión local.'); notify('Fusión completada.'); }); } }
@@ -563,7 +611,7 @@ async function init() {
   window.addEventListener('appinstalled', () => { installPrompt = null; if (state?.auditor) { render(); notify('La aplicación se instaló correctamente.'); } });
   window.addEventListener('online', () => { if (state?.auditor) { render(); notify('Conexión recuperada. Tus datos siguen guardados solo en este dispositivo.'); } });
   window.addEventListener('offline', () => { if (state?.auditor) { render(); notify('Sin conexión: puedes seguir trabajando con los datos locales.', 'warning'); } });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=11').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=12').catch(() => {});
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
