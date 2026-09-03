@@ -241,15 +241,15 @@ function locationFieldsMarkup(prefix, location = {}) {
   const rawFloor = String(location.floor || '').trim().toLocaleUpperCase('es-MX');
   const valueFor = (value, values) => values.includes(value) ? value : (value ? '(OTRO)' : '');
   const typeValue = valueFor(rawType, spaceTypes()); const buildingValue = valueFor(rawBuilding, buildings()); const floorValue = valueFor(rawFloor, floors());
-  const customField = (name, label, value, visible, id) => `<div class="field" id="${id}" ${visible ? '' : 'hidden'}><label for="${id}-input">${label}</label><input id="${id}-input" name="${name}" value="${escapeHtml(value)}" ${visible ? 'required' : ''} placeholder="Escribe el valor" /></div>`;
+  const catalogField = ({ id, name, label, customName, customLabel, customId, values, selected, customValue, required = false }) => {
+    const isCustom = selected === '(OTRO)';
+    return `<div class="field catalog-field"><label for="${id}">${label}</label><select id="${id}" name="${name}" data-custom-field="${customId}" ${isCustom ? 'hidden' : ''} ${required ? 'required' : ''}>${selectOptions(values, selected, `Selecciona ${label.toLocaleLowerCase('es-MX')}`)}</select><div class="catalog-custom-input" id="${customId}" ${isCustom ? '' : 'hidden'}><input id="${customId}-input" name="${customName}" value="${escapeHtml(customValue)}" ${isCustom && required ? 'required' : ''} aria-label="${customLabel}" placeholder="${customLabel}" /><button class="catalog-reset" type="button" data-action="restore-catalog" data-select-id="${id}" data-custom-field="${customId}" data-custom-input-id="${customId}-input" aria-label="Volver al catálogo de ${label.toLocaleLowerCase('es-MX')}">Elegir de lista</button></div></div>`;
+  };
   return `
-    <div class="field"><label for="${prefix}-space-type">Tipo de espacio</label><select id="${prefix}-space-type" name="spaceType" data-custom-field="${prefix}-custom-space-type" required>${selectOptions(spaceTypes(), typeValue, 'Selecciona tipo de espacio')}</select></div>
-    ${customField('customSpaceType', 'Otro tipo de espacio', typeValue === '(OTRO)' ? rawType : '', typeValue === '(OTRO)', `${prefix}-custom-space-type`)}
+    ${catalogField({ id: `${prefix}-space-type`, name: 'spaceType', label: 'Tipo de espacio', customName: 'customSpaceType', customLabel: 'Escribe el tipo de espacio', customId: `${prefix}-custom-space-type`, values: spaceTypes(), selected: typeValue, customValue: typeValue === '(OTRO)' ? rawType : '', required: true })}
     <div class="field"><label for="${prefix}-location-name">Nombre visible</label><input id="${prefix}-location-name" name="locationName" value="${escapeHtml(location.name || '')}" placeholder="Automático: OFICINA 01" /></div>
-    <div class="field"><label for="${prefix}-building">Edificio</label><select id="${prefix}-building" name="building" data-custom-field="${prefix}-custom-building">${selectOptions(buildings(), buildingValue, 'Selecciona edificio')}</select></div>
-    ${customField('customBuilding', 'Otro edificio', buildingValue === '(OTRO)' ? rawBuilding : '', buildingValue === '(OTRO)', `${prefix}-custom-building`)}
-    <div class="field"><label for="${prefix}-floor">Piso</label><select id="${prefix}-floor" name="floor" data-custom-field="${prefix}-custom-floor">${selectOptions(floors(), floorValue, 'Selecciona piso')}</select></div>
-    ${customField('customFloor', 'Otro piso', floorValue === '(OTRO)' ? rawFloor : '', floorValue === '(OTRO)', `${prefix}-custom-floor`)}`;
+    ${catalogField({ id: `${prefix}-building`, name: 'building', label: 'Edificio', customName: 'customBuilding', customLabel: 'Escribe el edificio', customId: `${prefix}-custom-building`, values: buildings(), selected: buildingValue, customValue: buildingValue === '(OTRO)' ? rawBuilding : '' })}
+    ${catalogField({ id: `${prefix}-floor`, name: 'floor', label: 'Piso', customName: 'customFloor', customLabel: 'Escribe el piso', customId: `${prefix}-custom-floor`, values: floors(), selected: floorValue, customValue: floorValue === '(OTRO)' ? rawFloor : '' })}`;
 }
 
 function usersModule() {
@@ -421,6 +421,7 @@ function demoData() {
 
 async function handleClick(event) {
   const target = event.target.closest('[data-action]'); if (!target) return; const action = target.dataset.action;
+  if (action === 'restore-catalog') { const select = $(`#${target.dataset.selectId}`); const custom = $(`#${target.dataset.customField}`); const input = $(`#${target.dataset.customInputId}`); if (input) { input.value = ''; input.required = false; } if (custom) custom.hidden = true; if (select) { select.hidden = false; select.value = ''; select.focus(); } return; }
   if (action === 'close-modal') { closeModal(); return; }
   if (action === 'nav') { activeModule = target.dataset.module; selected.clear(); render(); return; }
   if (action === 'logout') { state.auditor = null; await persist(); render(); return; }
@@ -479,7 +480,7 @@ async function handleClick(event) {
 }
 
 async function handleChange(event) {
-  if (event.target.matches('[data-custom-field]')) { const field = $(`#${event.target.dataset.customField}`); const input = field?.querySelector('input'); const show = event.target.value === '(OTRO)'; if (field) field.hidden = !show; if (input) { input.required = show; if (show) input.focus(); else input.value = ''; } return; }
+  if (event.target.matches('[data-custom-field]')) { const select = event.target; const field = $(`#${select.dataset.customField}`); const input = field?.querySelector('input'); const show = select.value === '(OTRO)'; select.hidden = show; if (field) field.hidden = !show; if (input) { input.required = show && select.name === 'spaceType'; if (show) input.focus(); else input.value = ''; } return; }
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
