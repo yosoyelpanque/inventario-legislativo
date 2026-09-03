@@ -1,6 +1,6 @@
-const CACHE = 'inventario-legislativo-v9';
+const CACHE = 'inventario-legislativo-v11';
 const CORE = [
-  './', './index.html', './styles.css?v=9', './app.js?v=9', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=11', './app.js?v=11', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
@@ -21,4 +21,3 @@ self.addEventListener('fetch', (event) => {
     return response;
   }).catch(() => caches.match('./index.html'))));
 });
-
