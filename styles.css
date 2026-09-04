@@ -152,11 +152,6 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .form-grid .span-2 { grid-column: span 2; }
 .form-grid .field[hidden] { display: none !important; }
-.catalog-field > select[hidden], .catalog-custom-input[hidden] { display: none !important; }
-.catalog-custom-input { display: flex; align-items: stretch; gap: 7px; }
-.catalog-custom-input input { flex: 1; min-width: 0; }
-.catalog-reset { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: #f7fbfa; color: var(--green-800); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.catalog-reset:hover { border-color: var(--green-700); color: var(--green-800); background: var(--jade-pale); }
 .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 21px; }
 .users-list, .notes-list, .profile-list { display: grid; gap: 0; }
 .user-row, .note-row, .profile-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 19px; border-bottom: 1px solid var(--line); }
