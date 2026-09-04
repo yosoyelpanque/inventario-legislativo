@@ -427,6 +427,28 @@ async function showDetail(id, additional = false) {
   openModal(additional ? 'Detalle de bien adicional' : 'Detalle de bien', `<div class="detail-grid">${fields.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div><div class="modal-photo">${photoUrl ? `<img src="${photoUrl}" alt="Evidencia del bien" />` : `<span>Sin evidencia fotográfica</span>`}</div><input id="photo-input" class="hidden" type="file" accept="image/*" capture="environment" data-item="${id}" data-additional="${additional}">`, { wide: true, footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button class="btn secondary" data-action="choose-photo">${icon('camera')} ${photo ? 'Reemplazar foto' : 'Agregar foto'}</button>${additional ? '' : `<button class="btn" data-action="open-assign" data-id="${id}">Asignar ubicación</button>`}` });
 }
 
+async function applyInventoryAssignment(ids, userId, location, reassignment = false) {
+  const targets = ids.map((id) => state.inventory.find((item) => item.id === id)).filter(Boolean);
+  if (!targets.length) { notify('Los bienes seleccionados ya no están disponibles.', 'warning'); closeModal(); return; }
+  await mutate(() => {
+    const selectedLocation = locationsFor(userId).find((entry) => entry.name === location);
+    targets.forEach((item) => Object.assign(item, { userId, location, status: 'ubicado', retag: true, updatedAt: Date.now() }));
+    activateUserLocation(userId, selectedLocation?.id);
+    selected.clear();
+  }, `Se ${reassignment ? 'reubicaron' : 'asignaron'} ${targets.length} bien${targets.length === 1 ? '' : 'es'} a ${personName(userId)}.`);
+  closeModal();
+}
+
+function openReassignmentConfirm(ids, userId, location, locatedItems) {
+  const first = locatedItems[0];
+  const currentUser = personName(first.userId);
+  const currentLocation = first.location || 'una ubicación sin especificar';
+  const detail = locatedItems.length === 1
+    ? `El bien ${first.clave} ya fue ubicado con ${currentUser} en ${currentLocation}. ¿Deseas reubicarlo?`
+    : `${locatedItems.length} de los bienes seleccionados ya fueron ubicados. Por ejemplo, ${first.clave} está con ${currentUser} en ${currentLocation}. ¿Deseas reubicarlos?`;
+  openModal('Bien ya ubicado', `<p style="margin:0;color:var(--muted);line-height:1.55">${escapeHtml(detail)}</p>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn" data-action="confirm-reassign" data-ids="${ids.join(',')}" data-user-id="${escapeHtml(userId)}" data-location="${escapeHtml(location)}">Sí, reubicar</button>` });
+}
+
 function openAssign(ids = [...selected]) {
   const targets = ids.filter((id) => state.inventory.some((item) => item.id === id));
   if (!targets.length) { notify('Selecciona al menos un bien para asignar.', 'warning'); return; }
@@ -477,7 +499,8 @@ async function handleClick(event) {
   if (action === 'additional-detail') { await showDetail(target.dataset.id, true); return; }
   if (action === 'assign') { openAssign(); return; }
   if (action === 'open-assign') { openAssign([target.dataset.id]); return; }
-  if (action === 'commit-assign') { const userId = $('#assign-user').value; const location = $('#assign-location').value; const ids = target.dataset.ids.split(','); if (!userId || !location) { notify('Selecciona resguardante y ubicación.', 'warning'); return; } await mutate(() => { const selectedLocation = locationsFor(userId).find((entry) => entry.name === location); ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) Object.assign(item, { userId, location, status: 'ubicado', retag: true, updatedAt: Date.now() }); }); activateUserLocation(userId, selectedLocation?.id); selected.clear(); }, `Se asignaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} a ${personName(userId)}.`); closeModal(); return; }
+  if (action === 'commit-assign') { const userId = $('#assign-user').value; const location = $('#assign-location').value; const ids = target.dataset.ids.split(','); if (!userId || !location) { notify('Selecciona resguardante y ubicación.', 'warning'); return; } const locatedItems = ids.map((id) => state.inventory.find((item) => item.id === id)).filter((item) => item?.status === 'ubicado'); if (locatedItems.length) { openReassignmentConfirm(ids, userId, location, locatedItems); return; } await applyInventoryAssignment(ids, userId, location); return; }
+  if (action === 'confirm-reassign') { await applyInventoryAssignment(target.dataset.ids.split(','), target.dataset.userId, target.dataset.location, true); return; }
   if (action === 'retag') { const ids = [...selected]; if (!ids.length) { notify('Selecciona bienes para marcarlos para re-etiquetado.', 'warning'); return; } await mutate(() => ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) item.retag = true; }), `Se marcaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} para re-etiquetado.`); return; }
   if (action === 'bulk-note') { openNote(); return; }
   if (action === 'new-note') { openStandaloneNote(); return; }
@@ -608,7 +631,7 @@ document.addEventListener('submit', async (event) => {
     const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
     const duplicate = state.users.find((entry) => entry.id !== user.id && comparableName(entry.name) === comparableName(name)); if (duplicate) { notify(`Ya existe ${duplicate.name}. Usa un nombre diferenciado o agrega una ubicación a ese registro.`, 'warning'); return; }
     await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (current) Object.assign(current, { name, area }); }, `Se actualizaron los datos de ${name}.`);
-    await openUserEditor(user.id); return;
+    closeModal(); return;
   }
   if (event.target.id === 'location-form') {
     event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
@@ -619,7 +642,7 @@ document.addEventListener('submit', async (event) => {
     } else {
       await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations.push(location); activateUserLocation(user.id, location.id); }, `Se agregó ${location.name} a ${user.name}.`);
     }
-    await openUserEditor(user.id); return;
+    closeModal(); return;
   }
   if (event.target.id === 'additional-form') { event.preventDefault(); const form = new FormData(event.target); const series = String(form.get('serie')).trim().toUpperCase(); const userId = String(form.get('userId')); const possession = String(form.get('possession')); const personal = form.get('personal') === 'on'; let key = String(form.get('clave')).trim(); if (!key && possession === 'Cámara' && !personal) key = nextAdditionalKey(userId); if (!key) { notify('La clave única es obligatoria para este tipo de posesión.', 'warning'); return; } if (!String(form.get('descripcion')).trim()) { notify('Agrega una descripción para el bien adicional.', 'warning'); return; } const duplicate = [...state.inventory, ...state.additionalItems].find((item) => item.serie && item.serie.toUpperCase() === series); if (duplicate) { notify(`La serie ya existe en ${duplicate.clave}. Revisa el registro antes de continuar.`, 'warning'); } await mutate(() => state.additionalItems.push({ id: uuid(), clave: key, descripcion: String(form.get('descripcion')).trim(), marca: String(form.get('marca')).trim(), modelo: String(form.get('modelo')).trim(), serie: series, possession, personal, detail: String(form.get('detail')).trim() || (possession === 'Arrendamiento' ? 'LXVIDG AJ- 070/2024' : ''), userId, location: activeLocationFor(userId)?.name || '', createdAt: Date.now(), updatedAt: Date.now() }), `Se registró el adicional ${key || 'sin clave'}.`); return; }
   if (event.target.id === 'profile-form') { event.preventDefault(); const form = new FormData(event.target); const [marca, modelo] = String(form.get('marcaModelo')).split('|').map((part) => part.trim()); try { new RegExp(String(form.get('regex'))); } catch { notify('La expresión regular no es válida.', 'error'); return; } await mutate(() => state.magicProfiles.push({ id: uuid(), regex: String(form.get('regex')).trim(), descripcion: String(form.get('descripcion')).trim(), marca, modelo, possession: String(form.get('possession')) }), 'Se agregó un perfil de autollenado.'); return; }
@@ -685,3 +708,4 @@ async function init() {
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
+
