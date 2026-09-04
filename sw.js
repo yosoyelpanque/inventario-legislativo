@@ -1,7 +1,7 @@
-// Refresco de publicación: los catálogos ahora son sugerencias editables sin la opción “otro”.
-const CACHE = 'inventario-legislativo-v17';
+// Refresco de publicación: las bajas permiten reasignar o dejar bienes sin asignar.
+const CACHE = 'inventario-legislativo-v19';
 const CORE = [
-  './', './index.html', './styles.css?v=17', './app.js?v=17', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=19', './app.js?v=19', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
