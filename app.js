@@ -346,27 +346,72 @@ function openLocationEditor(userId, locationId = '') {
   openModal(editing ? `Editar ${location.name}` : `Agregar ubicación a ${user.name}`, `<form id="location-form" class="form-grid" data-user-id="${user.id}" data-location-id="${location?.id || ''}">${locationFieldsMarkup('location-editor', location || {})}<p class="form-tip span-2">El nombre se genera automáticamente con el siguiente consecutivo del tipo de espacio, por ejemplo, OFICINA 01.</p></form>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn" type="submit" form="location-form">${editing ? 'Guardar ubicación' : 'Agregar ubicación'}</button>` });
 }
 
+function locationDestinations(sourceUserId, sourceLocationId, userId) {
+  return locationsFor(userId).filter((location) => !(userId === sourceUserId && location.id === sourceLocationId));
+}
+function locationTransferUsers(sourceUserId, sourceLocationId) {
+  return state.users.filter((user) => locationDestinations(sourceUserId, sourceLocationId, user.id).length);
+}
 function openLocationReassignment(sourceUserId, sourceLocationId) {
   const sourceUser = state.users.find((user) => user.id === sourceUserId);
   const sourceLocation = sourceUser?.locations?.find((location) => location.id === sourceLocationId);
   if (!sourceUser || !sourceLocation) return;
   const linked = relatedItems(sourceUserId, sourceLocation.name);
-  const candidates = state.users.filter((user) => (user.locations || []).some((location) => user.id !== sourceUserId || location.id !== sourceLocationId));
+  const candidates = locationTransferUsers(sourceUserId, sourceLocationId);
   const preferred = candidates.find((user) => user.id === sourceUserId) || candidates[0];
   const userOptions = candidates.map((user) => `<option value="${user.id}" ${user.id === preferred?.id ? 'selected' : ''}>${escapeHtml(user.name)} · ${escapeHtml(user.area || 'Sin área')}</option>`).join('');
-  openModal('Reasignar bienes antes de eliminar ubicación', `<p class="page-subtitle">${linked.length} bien${linked.length === 1 ? '' : 'es'} está${linked.length === 1 ? '' : 'n'} asignado${linked.length === 1 ? '' : 's'} a <strong>${escapeHtml(sourceLocation.name)}</strong>. Selecciona otra ubicación del mismo resguardante o de otro; después podrás eliminar esta ubicación.</p><div class="form-grid"><div class="field span-2"><label for="relocate-user">Nuevo resguardante</label><select id="relocate-user">${userOptions || '<option value="">No hay otra ubicación disponible</option>'}</select></div><div class="field span-2"><label for="relocate-location">Nueva ubicación</label><select id="relocate-location"></select></div></div>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${sourceUserId}">Cancelar</button><button class="btn" data-action="commit-location-reassignment" data-source-user-id="${sourceUserId}" data-source-location-id="${sourceLocationId}">Reasignar bienes</button>` });
+  openModal('Eliminar ubicación y resolver bienes', `<p class="page-subtitle">${linked.length} bien${linked.length === 1 ? '' : 'es'} está${linked.length === 1 ? '' : 'n'} asignado${linked.length === 1 ? '' : 's'} a <strong>${escapeHtml(sourceLocation.name)}</strong>. Puedes dejarlos sin asignar o transferirlos antes de eliminar la ubicación.</p><div class="form-grid"><div class="field span-2"><label for="relocate-disposition">Al eliminar esta ubicación</label><select id="relocate-disposition"><option value="unassign">Dejar bienes sin asignar</option><option value="reassign" ${candidates.length ? '' : 'disabled'}>Reasignar bienes a otra ubicación</option></select></div><div class="field span-2" id="relocate-user-field" hidden><label for="relocate-user">Nuevo resguardante</label><select id="relocate-user">${userOptions || '<option value="">No hay otra ubicación disponible</option>'}</select></div><div class="field span-2" id="relocate-location-field" hidden><label for="relocate-location">Nueva ubicación</label><select id="relocate-location"></select></div></div>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${sourceUserId}">Cancelar</button><button class="btn danger" data-action="commit-location-reassignment" data-source-user-id="${sourceUserId}" data-source-location-id="${sourceLocationId}">Eliminar y dejar sin asignar</button>` });
   updateLocationReassignmentOptions();
 }
 
 function updateLocationReassignmentOptions() {
-  const userId = $('#relocate-user')?.value;
-  const select = $('#relocate-location');
   const commit = $('[data-action="commit-location-reassignment"]');
-  if (!select || !commit) return;
-  const options = locationsFor(userId).filter((location) => !(userId === commit.dataset.sourceUserId && location.id === commit.dataset.sourceLocationId));
+  const userField = $('#relocate-user-field'); const locationField = $('#relocate-location-field');
+  if (!commit || !userField || !locationField) return;
+  const reassign = $('#relocate-disposition')?.value === 'reassign';
+  userField.hidden = !reassign; locationField.hidden = !reassign;
+  if (!reassign) { commit.disabled = false; commit.textContent = 'Eliminar y dejar sin asignar'; return; }
+  const userId = $('#relocate-user')?.value; const select = $('#relocate-location');
+  const options = locationDestinations(commit.dataset.sourceUserId, commit.dataset.sourceLocationId, userId);
   const preferred = activeLocationFor(userId);
-  select.innerHTML = options.length ? options.map((location) => `<option value="${location.id}" ${location.id === preferred?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('') : '<option value="">No hay otra ubicación disponible</option>';
-  commit.disabled = !options.length;
+  if (select) select.innerHTML = options.length ? options.map((location) => `<option value="${location.id}" ${location.id === preferred?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('') : '<option value="">No hay otra ubicación disponible</option>';
+  commit.disabled = !options.length; commit.textContent = 'Reasignar y eliminar ubicación';
+}
+
+function deletionTargetUsers(sourceUserId) { return state.users.filter((user) => user.id !== sourceUserId && locationsFor(user.id).length); }
+async function deleteUserAndResolve(userId, targetUserId = '', targetLocationId = '') {
+  const user = state.users.find((entry) => entry.id === userId); if (!user) return;
+  const targetUser = state.users.find((entry) => entry.id === targetUserId);
+  const targetLocation = targetUser?.locations?.find((entry) => entry.id === targetLocationId);
+  const reassign = Boolean(targetUser && targetLocation);
+  const linked = relatedItems(user.id); const photoKeys = [user.photoKey, ...(user.locations || []).map((location) => location.photoKey), state.layouts?.[user.id]?.planKey].filter(Boolean);
+  await mutate(() => {
+    state.inventory.forEach((item) => { if (item.userId === user.id) Object.assign(item, reassign ? { userId: targetUser.id, location: targetLocation.name, status: item.status === 'pendiente' ? 'ubicado' : item.status, updatedAt: Date.now() } : { userId: '', location: '', status: 'pendiente', updatedAt: Date.now() }); });
+    state.additionalItems.forEach((item) => { if (item.userId === user.id) Object.assign(item, reassign ? { userId: targetUser.id, location: targetLocation.name, updatedAt: Date.now() } : { userId: '', location: '', updatedAt: Date.now() }); });
+    state.users = state.users.filter((entry) => entry.id !== user.id);
+    if (state.activeUserId === user.id) state.activeUserId = reassign ? targetUser.id : '';
+    if (reassign) activateUserLocation(targetUser.id, targetLocation.id); else if (layoutUserId === user.id) { layoutUserId = ''; layoutLocationName = ''; }
+    delete state.layouts[user.id];
+  }, reassign ? `Se eliminó a ${user.name} y se reasignaron ${linked.length} bienes a ${targetUser.name} · ${targetLocation.name}.` : `Se eliminó a ${user.name} y se desvincularon ${linked.length} bienes.`);
+  await Promise.all(photoKeys.map((key) => storage.deletePhoto(key)));
+}
+function openUserDeletion(userId) {
+  const user = state.users.find((entry) => entry.id === userId); if (!user) return;
+  const linked = relatedItems(user.id);
+  if (!linked.length) { confirmModal('Eliminar resguardante', `${user.name} se eliminará. No tiene bienes asignados; también se eliminarán sus fotografías locales.`, async () => { await deleteUserAndResolve(user.id); }, 'Eliminar resguardante', true); return; }
+  const candidates = deletionTargetUsers(user.id); const preferred = candidates.find((entry) => entry.id === state.activeUserId) || candidates[0];
+  const options = candidates.map((entry) => `<option value="${entry.id}" ${entry.id === preferred?.id ? 'selected' : ''}>${escapeHtml(entry.name)} · ${escapeHtml(entry.area || 'Sin área')}</option>`).join('');
+  openModal('Eliminar resguardante y resolver bienes', `<p class="page-subtitle"><strong>${escapeHtml(user.name)}</strong> se eliminará junto con sus fotografías locales. Sus ${linked.length} bien${linked.length === 1 ? '' : 'es'} pueden quedar sin asignar o pasar a otro resguardante.</p><div class="form-grid"><div class="field span-2"><label for="delete-user-disposition">Al eliminar este resguardante</label><select id="delete-user-disposition"><option value="unassign">Dejar bienes sin asignar</option><option value="reassign" ${candidates.length ? '' : 'disabled'}>Asignar bienes a otro resguardante</option></select></div><div class="field span-2" id="delete-user-target-field" hidden><label for="delete-user-target">Nuevo resguardante</label><select id="delete-user-target">${options || '<option value="">No hay resguardantes con ubicaciones disponibles</option>'}</select></div><div class="field span-2" id="delete-user-location-field" hidden><label for="delete-user-location">Ubicación de destino</label><select id="delete-user-location"></select></div></div>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn danger" data-action="commit-user-deletion" data-source-user-id="${user.id}">Eliminar y dejar sin asignar</button>` });
+  updateUserDeletionDestinations();
+}
+function updateUserDeletionDestinations() {
+  const commit = $('[data-action="commit-user-deletion"]'); const userField = $('#delete-user-target-field'); const locationField = $('#delete-user-location-field');
+  if (!commit || !userField || !locationField) return;
+  const reassign = $('#delete-user-disposition')?.value === 'reassign'; userField.hidden = !reassign; locationField.hidden = !reassign;
+  if (!reassign) { commit.disabled = false; commit.textContent = 'Eliminar y dejar sin asignar'; return; }
+  const targetUserId = $('#delete-user-target')?.value; const select = $('#delete-user-location'); const options = locationsFor(targetUserId); const preferred = activeLocationFor(targetUserId);
+  if (select) select.innerHTML = options.length ? options.map((location) => `<option value="${location.id}" ${location.id === preferred?.id ? 'selected' : ''}>${escapeHtml(location.name)}${location.building ? ` · ${escapeHtml(location.building)}` : ''}</option>`).join('') : '<option value="">No hay ubicación disponible</option>';
+  commit.disabled = !options.length; commit.textContent = 'Reasignar y eliminar resguardante';
 }
 
 function openDuplicateUserModal(user, proposedName) {
@@ -448,8 +493,27 @@ async function handleClick(event) {
   if (action === 'remove-user-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user?.photoKey) return; const key = user.photoKey; confirmModal('Quitar foto del resguardante', 'La fotografía se eliminará de este dispositivo. Esta acción no modifica los bienes asignados.', async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (current) current.photoKey = ''; }, 'Se quitó la foto del resguardante.'); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
   if (action === 'remove-location-photo') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location?.photoKey) return; const key = location.photoKey; confirmModal('Quitar foto de ubicación', `La fotografía de ${location.name} se eliminará de este dispositivo.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const targetLocation = current?.locations?.find((entry) => entry.id === location.id); if (targetLocation) targetLocation.photoKey = ''; }, `Se quitó la foto de ${location.name}.`); await storage.deletePhoto(key); await openUserEditor(user.id); }, 'Quitar foto', true); return; }
   if (action === 'remove-location') { const user = state.users.find((entry) => entry.id === target.dataset.userId); const location = user?.locations?.find((entry) => entry.id === target.dataset.locationId); if (!user || !location) return; const linked = relatedItems(user.id, location.name); if (linked.length) { openLocationReassignment(user.id, location.id); return; } const photoKey = location.photoKey; confirmModal('Eliminar ubicación', `Se eliminará ${location.name} del resguardante. No hay bienes vinculados a esta ubicación.`, async () => { await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); if (!current) return; current.locations = current.locations.filter((entry) => entry.id !== location.id); current.activeLocationId = current.locations.at(-1)?.id || ''; const layout = state.layouts?.[current.id]; if (layout?.pins?.[location.name]) { const pins = { ...layout.pins }; delete pins[location.name]; state.layouts[current.id] = { ...layout, pins }; } layoutUserId = current.id; layoutLocationName = activeLocationFor(current.id)?.name || ''; }, `Se eliminó la ubicación ${location.name}.`); if (photoKey) await storage.deletePhoto(photoKey); await openUserEditor(user.id); }, 'Eliminar ubicación', true); return; }
-  if (action === 'commit-location-reassignment') { const sourceUserId = target.dataset.sourceUserId; const sourceLocationId = target.dataset.sourceLocationId; const sourceUser = state.users.find((user) => user.id === sourceUserId); const sourceLocation = sourceUser?.locations?.find((location) => location.id === sourceLocationId); const targetUserId = $('#relocate-user')?.value; const targetLocationId = $('#relocate-location')?.value; const targetUser = state.users.find((user) => user.id === targetUserId); const targetLocation = targetUser?.locations?.find((location) => location.id === targetLocationId); if (!sourceUser || !sourceLocation || !targetUser || !targetLocation) { notify('Selecciona una ubicación de destino válida.', 'warning'); return; } let moved = 0; await mutate(() => { [...state.inventory, ...state.additionalItems].forEach((item) => { if (item.userId === sourceUserId && item.location === sourceLocation.name) { Object.assign(item, { userId: targetUser.id, location: targetLocation.name, status: item.status === 'pendiente' ? 'ubicado' : item.status, updatedAt: Date.now() }); moved++; } }); activateUserLocation(targetUser.id, targetLocation.id); }, `Se reasignaron ${moved} bien${moved === 1 ? '' : 'es'} a ${targetUser.name} · ${targetLocation.name}.`); closeModal(); await openUserEditor(sourceUserId); return; }
-  if (action === 'delete-user') { const user = state.users.find((entry) => entry.id === target.dataset.userId); if (!user) return; const linked = relatedItems(user.id); const photoKeys = [user.photoKey, ...(user.locations || []).map((location) => location.photoKey), state.layouts?.[user.id]?.planKey].filter(Boolean); confirmModal('Eliminar resguardante', `${user.name} se eliminará. Sus ${linked.length} bien${linked.length === 1 ? '' : 'es'} quedarán sin resguardante y, en inventario, volverán a pendiente. También se eliminarán sus fotografías locales.`, async () => { await mutate(() => { state.inventory.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', status: 'pendiente', updatedAt: Date.now() }); }); state.additionalItems.forEach((item) => { if (item.userId === user.id) Object.assign(item, { userId: '', location: '', updatedAt: Date.now() }); }); state.users = state.users.filter((entry) => entry.id !== user.id); if (state.activeUserId === user.id) state.activeUserId = ''; if (layoutUserId === user.id) { layoutUserId = ''; layoutLocationName = ''; } delete state.layouts[user.id]; }, `Se eliminó a ${user.name} y se desvincularon ${linked.length} bienes.`); await Promise.all(photoKeys.map((key) => storage.deletePhoto(key))); }, 'Eliminar resguardante', true); return; }
+  if (action === 'commit-location-reassignment') {
+    const sourceUserId = target.dataset.sourceUserId; const sourceLocationId = target.dataset.sourceLocationId;
+    const sourceUser = state.users.find((user) => user.id === sourceUserId);
+    const sourceLocation = sourceUser?.locations?.find((location) => location.id === sourceLocationId);
+    const reassign = $('#relocate-disposition')?.value === 'reassign';
+    const targetUserId = $('#relocate-user')?.value; const targetLocationId = $('#relocate-location')?.value;
+    const targetUser = state.users.find((user) => user.id === targetUserId);
+    const targetLocation = targetUser?.locations?.find((location) => location.id === targetLocationId);
+    if (!sourceUser || !sourceLocation || (reassign && (!targetUser || !targetLocation || (targetUser.id === sourceUserId && targetLocation.id === sourceLocationId)))) { notify('Selecciona una ubicación de destino válida.', 'warning'); return; }
+    const affected = relatedItems(sourceUserId, sourceLocation.name).length; const photoKey = sourceLocation.photoKey;
+    await mutate(() => {
+      state.inventory.forEach((item) => { if (item.userId === sourceUserId && item.location === sourceLocation.name) Object.assign(item, reassign ? { userId: targetUser.id, location: targetLocation.name, status: item.status === 'pendiente' ? 'ubicado' : item.status, updatedAt: Date.now() } : { userId: '', location: '', status: 'pendiente', updatedAt: Date.now() }); });
+      state.additionalItems.forEach((item) => { if (item.userId === sourceUserId && item.location === sourceLocation.name) Object.assign(item, reassign ? { userId: targetUser.id, location: targetLocation.name, updatedAt: Date.now() } : { userId: '', location: '', updatedAt: Date.now() }); });
+      const current = state.users.find((user) => user.id === sourceUserId);
+      if (current) { current.locations = current.locations.filter((location) => location.id !== sourceLocationId); current.activeLocationId = current.locations.at(-1)?.id || ''; const layout = state.layouts?.[current.id]; if (layout?.pins?.[sourceLocation.name]) { const pins = { ...layout.pins }; delete pins[sourceLocation.name]; state.layouts[current.id] = { ...layout, pins }; } }
+      if (reassign) activateUserLocation(targetUser.id, targetLocation.id); else if (state.activeUserId === sourceUserId) { const next = activeLocationFor(sourceUserId); if (next) activateUserLocation(sourceUserId, next.id); else { state.activeUserId = ''; layoutUserId = ''; layoutLocationName = ''; } }
+    }, reassign ? `Se reasignaron ${affected} bien${affected === 1 ? '' : 'es'} a ${targetUser.name} · ${targetLocation.name} y se eliminó ${sourceLocation.name}.` : `Se dejaron sin asignar ${affected} bien${affected === 1 ? '' : 'es'} y se eliminó ${sourceLocation.name}.`);
+    if (photoKey) await storage.deletePhoto(photoKey); closeModal(); await openUserEditor(sourceUserId); return;
+  }
+  if (action === 'delete-user') { openUserDeletion(target.dataset.userId); return; }
+  if (action === 'commit-user-deletion') { const sourceUserId = target.dataset.sourceUserId; const reassign = $('#delete-user-disposition')?.value === 'reassign'; const targetUserId = $('#delete-user-target')?.value; const targetLocationId = $('#delete-user-location')?.value; const sourceUser = state.users.find((entry) => entry.id === sourceUserId); const targetUser = state.users.find((entry) => entry.id === targetUserId); const targetLocation = targetUser?.locations?.find((entry) => entry.id === targetLocationId); if (!sourceUser || (reassign && (!targetUser || !targetLocation || targetUser.id === sourceUserId))) { notify('Selecciona un resguardante y una ubicación de destino válidos.', 'warning'); return; } await deleteUserAndResolve(sourceUserId, reassign ? targetUserId : '', reassign ? targetLocationId : ''); closeModal(); return; }
   if (action === 'activate-user') { const id = target.dataset.id; const willDeactivate = state.activeUserId === id; await mutate(() => { if (willDeactivate) state.activeUserId = ''; else activateUserLocation(id, activeLocationFor(id)?.id); }, willDeactivate ? 'Se desactivó el resguardante de contexto.' : `Se activó a ${personName(id)} y su ubicación seleccionada.`); return; }
   if (action === 'magic-fill') { magicFillForm(); return; }
   if (action === 'bulk-magic') { let changes = 0; await mutate(() => { state.additionalItems.forEach((item) => { const profile = matchProfile(item.serie); if (profile) { Object.assign(item, { descripcion: profile.descripcion, marca: profile.marca, modelo: profile.modelo, possession: profile.possession, updatedAt: Date.now() }); changes++; } }); }, 'Se aplicaron perfiles de autollenado.'); notify(changes ? `${changes} adicional${changes === 1 ? '' : 'es'} actualizado${changes === 1 ? '' : 's'}.` : 'No hubo series que coincidieran con un perfil.', changes ? 'success' : 'warning'); return; }
@@ -473,7 +537,8 @@ async function handleChange(event) {
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
-  if (event.target.id === 'relocate-user') { updateLocationReassignmentOptions(); return; }
+  if (event.target.id === 'relocate-user' || event.target.id === 'relocate-disposition') { updateLocationReassignmentOptions(); return; }
+  if (event.target.id === 'delete-user-target' || event.target.id === 'delete-user-disposition') { updateUserDeletionDestinations(); return; }
   if (event.target.matches('[data-user-location-select]')) { const userId = event.target.dataset.userId; const locationId = event.target.value; const location = locationsFor(userId).find((entry) => entry.id === locationId); if (!location) return; await mutate(() => activateUserLocation(userId, locationId), `Se dejó ${location.name} como ubicación activa de ${personName(userId)}.`); return; }
   if (event.target.id === 'layout-user-select') { layoutUserId = event.target.value; layoutLocationName = activeLocationFor(layoutUserId)?.name || locationsFor(layoutUserId)[0]?.name || ''; render(); return; }
   if (event.target.id === 'layout-location-select') { layoutLocationName = event.target.value; render(); return; }
