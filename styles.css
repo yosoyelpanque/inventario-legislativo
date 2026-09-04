@@ -107,6 +107,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .bulkbar { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 13px 22px; border-bottom: 1px solid var(--line); background: #fbfcfc; }
 .selected-count { margin-right: auto; color: var(--muted); font-size: 12px; font-weight: 700; }
 .selected-count b { color: var(--green-800); }
+.btn:disabled, .page-button:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; border: 1px solid var(--green-800); border-radius: 7px; padding: 0 13px; color: #fff; background: var(--green-800); font-size: 13px; font-weight: 800; transition: transform .15s, background .15s, border-color .15s; }
 .btn:hover { background: #02443b; }
 .btn:active { transform: translateY(1px); }
@@ -279,6 +280,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .modal-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .modal-body { padding: 22px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--line); background: #fbfcfc; }
+.modal-footer { flex-wrap: wrap; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
 .detail-grid div { padding: 13px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .detail-grid div:nth-child(2n) { border-right: 0; }
@@ -286,6 +288,12 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .detail-grid strong { font-size: 13px; overflow-wrap: anywhere; }
 .modal-photo { display: grid; min-height: 180px; place-items: center; margin-top: 17px; border: 1px dashed #b9c8c3; background: #f8fbfa; color: var(--muted); }
 .modal-photo img { max-width: 100%; max-height: 320px; object-fit: contain; }
+.modal-photo span { display: inline-flex; align-items: center; gap: 8px; padding: 16px; text-align: center; }
+.modal-photo svg, .photo-watermark svg { width: 18px; height: 18px; }
+.photo-watermark { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.note-review > p { margin: 0 0 13px; color: var(--ink); font-size: 13px; line-height: 1.5; }
+.note-answer { margin-top: 17px; }
+.note-corrections { display: grid; gap: 14px; margin-top: 14px; padding: 15px; border: 1px solid var(--line); background: #fbfcfc; }
 .scanner-video { width: 100%; max-height: 370px; background: #10211f; }
 
 #toast-root { position: fixed; z-index: 60; top: 20px; right: 20px; display: grid; gap: 10px; width: min(360px, calc(100vw - 40px)); }
@@ -374,3 +382,4 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   #print-root { display: block !important; }
   .print-document { display: block; }
 }
+
