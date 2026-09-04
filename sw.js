@@ -1,7 +1,7 @@
 // Las navegaciones se consultan primero en línea para evitar servir una versión anterior de la interfaz.
-const CACHE = 'inventario-legislativo-v22';
+const CACHE = 'inventario-legislativo-v23';
 const CORE = [
-  './', './index.html', './styles.css?v=22', './app.js?v=22', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=23', './app.js?v=23', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
