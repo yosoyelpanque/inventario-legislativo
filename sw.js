@@ -1,7 +1,7 @@
-// Refresco de publicación: las bajas permiten reasignar o dejar bienes sin asignar.
-const CACHE = 'inventario-legislativo-v19';
+// Refresco de publicación: confirma antes de reubicar bienes ya asignados.
+const CACHE = 'inventario-legislativo-v20';
 const CORE = [
-  './', './index.html', './styles.css?v=19', './app.js?v=19', './db.js', './parser.js', './reports.js',
+  './', './index.html', './styles.css?v=20', './app.js?v=20', './db.js', './parser.js', './reports.js',
   './manifest.json', './vendor/jszip.min.js', './assets/camara-logo.png',
   './assets/icon-192.png', './assets/icon-512.png'
 ];
@@ -22,3 +22,4 @@ self.addEventListener('fetch', (event) => {
     return response;
   }).catch(() => caches.match('./index.html'))));
 });
+
