@@ -19,9 +19,9 @@ const MAGIC_PROFILES = [
   ['^17WZ[A-Z0-9]{8,}', 'TELÉFONO', 'AVAYA', '9611G', 'Cámara']
 ].map(([regex, descripcion, marca, modelo, possession]) => ({ id: crypto.randomUUID(), regex, descripcion, marca, modelo, possession }));
 
-const SPACE_TYPES = ['ARCHIVO', 'AREA SECRETARIAL', 'BODEGA', 'CUBICULO', 'FOTOCOPIADO', 'PAPELERIA', 'MODULO', 'OFICINA', 'PASILLO', 'RECEPCION', 'SALA DE ESPERA', 'SALA DE JUNTAS', 'COCINA', 'COMEDOR', 'SITE', '(OTRO)'];
-const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. CENDI', 'EDIF. TALLERES GRAFICOS', 'EDIF. RESGUARDO Y SEGURIDAD E1', 'EDIF. RESGUARDO Y SEGURIDAD P1', 'ESTACIONAMIENTO 1', 'ESTACIONAMIENTO 2', 'ESTACIONAMIENTO 3', 'ESTACIONAMIENTO 4', 'ESTACIONAMIENTO HELIPUERTO', '(OTRO)'];
-const FLOORS = ['BASAMENTO', 'PLANTA BAJA', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'AZOTEA', 'SOTANO', '(OTRO)'];
+const SPACE_TYPES = ['ARCHIVO', 'AREA SECRETARIAL', 'BODEGA', 'CUBICULO', 'FOTOCOPIADO', 'PAPELERIA', 'MODULO', 'OFICINA', 'PASILLO', 'RECEPCION', 'SALA DE ESPERA', 'SALA DE JUNTAS', 'COCINA', 'COMEDOR', 'SITE'];
+const BUILDINGS = ['EDIF. A', 'EDIF. B', 'EDIF. C', 'EDIF. E', 'EDIF. F', 'EDIF. G', 'EDIF. H', 'EDIF. I', 'EDIF. CENDI', 'EDIF. TALLERES GRAFICOS', 'EDIF. RESGUARDO Y SEGURIDAD E1', 'EDIF. RESGUARDO Y SEGURIDAD P1', 'ESTACIONAMIENTO 1', 'ESTACIONAMIENTO 2', 'ESTACIONAMIENTO 3', 'ESTACIONAMIENTO 4', 'ESTACIONAMIENTO HELIPUERTO'];
+const FLOORS = ['BASAMENTO', 'PLANTA BAJA', 'PISO 1', 'PISO 2', 'PISO 3', 'PISO 4', 'AZOTEA', 'SOTANO'];
 
 const iconPaths = {
   inventory: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
@@ -151,9 +151,7 @@ function personName(userId) { return state.users.find((user) => user.id === user
 function statuses() { return { total: state.inventory.length, located: state.inventory.filter((item) => item.status === 'ubicado').length, pending: state.inventory.filter((item) => item.status !== 'ubicado').length }; }
 function areas() { return [...new Set([...state.inventory.map((item) => item.area), ...Object.keys(state.areaNames || {})].map((area) => String(area || '').trim()).filter(Boolean))].sort(); }
 function catalogValues(defaults, alphabetical = false) {
-  const other = defaults.find((value) => value === '(OTRO)');
-  const values = defaults.filter((value) => value !== '(OTRO)');
-  return [...(alphabetical ? values.sort((a, b) => a.localeCompare(b, 'es-MX')) : values), ...(other ? [other] : [])];
+  return alphabetical ? [...defaults].sort((a, b) => a.localeCompare(b, 'es-MX')) : [...defaults];
 }
 function spaceTypes() { return catalogValues(SPACE_TYPES, true); }
 function buildings() { return catalogValues(BUILDINGS); }
@@ -176,18 +174,14 @@ function nextLocation(label, ignoreLocationId = '', userId = '') {
   return `${base} ${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0')}`;
 }
 function locationValues(form, ignoreLocationId = '', userId = '') {
-  const selectValue = (name, customName) => {
-    const value = String(form.get(name) || '').trim();
-    return (value === '(OTRO)' ? String(form.get(customName) || '') : value).trim().toLocaleUpperCase('es-MX');
-  };
-  const type = selectValue('spaceType', 'customSpaceType');
-  const customName = String(form.get('locationName') || '').trim().toLocaleUpperCase('es-MX');
+  const value = (name) => String(form.get(name) || '').trim().toLocaleUpperCase('es-MX');
+  const type = value('spaceType');
   return {
     id: ignoreLocationId || uuid(),
     type,
-    name: customName || nextLocation(type, ignoreLocationId, userId),
-    building: selectValue('building', 'customBuilding'),
-    floor: selectValue('floor', 'customFloor'),
+    name: nextLocation(type, ignoreLocationId, userId),
+    building: value('building'),
+    floor: value('floor'),
     photoKey: ''
   };
 }
@@ -239,17 +233,14 @@ function locationFieldsMarkup(prefix, location = {}) {
   const rawType = String(location.type || (location.name ? inferSpaceType(location.name) : '')).trim().toLocaleUpperCase('es-MX');
   const rawBuilding = String(location.building || '').trim().toLocaleUpperCase('es-MX');
   const rawFloor = String(location.floor || '').trim().toLocaleUpperCase('es-MX');
-  const valueFor = (value, values) => values.includes(value) ? value : (value ? '(OTRO)' : '');
-  const typeValue = valueFor(rawType, spaceTypes()); const buildingValue = valueFor(rawBuilding, buildings()); const floorValue = valueFor(rawFloor, floors());
-  const catalogField = ({ id, name, label, customName, customLabel, customId, values, selected, customValue, required = false }) => {
-    const isCustom = selected === '(OTRO)';
-    return `<div class="field catalog-field"><label for="${id}">${label}</label><select id="${id}" name="${name}" data-custom-field="${customId}" ${isCustom ? 'hidden' : ''} ${required ? 'required' : ''}>${selectOptions(values, selected, `Selecciona ${label.toLocaleLowerCase('es-MX')}`)}</select><div class="catalog-custom-input" id="${customId}" ${isCustom ? '' : 'hidden'}><input id="${customId}-input" name="${customName}" value="${escapeHtml(customValue)}" ${isCustom && required ? 'required' : ''} aria-label="${customLabel}" placeholder="${customLabel}" /><button class="catalog-reset" type="button" data-action="restore-catalog" data-select-id="${id}" data-custom-field="${customId}" data-custom-input-id="${customId}-input" aria-label="Volver al catálogo de ${label.toLocaleLowerCase('es-MX')}">Elegir de lista</button></div></div>`;
+  const catalogField = ({ id, name, label, values, value, required = false }) => {
+    const listId = `${id}-catalog`;
+    return `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${name}" list="${listId}" value="${escapeHtml(value)}" ${required ? 'required' : ''} placeholder="Selecciona o escribe ${label.toLocaleLowerCase('es-MX')}" /><datalist id="${listId}">${values.map((entry) => `<option value="${escapeHtml(entry)}"></option>`).join('')}</datalist></div>`;
   };
   return `
-    ${catalogField({ id: `${prefix}-space-type`, name: 'spaceType', label: 'Tipo de espacio', customName: 'customSpaceType', customLabel: 'Escribe el tipo de espacio', customId: `${prefix}-custom-space-type`, values: spaceTypes(), selected: typeValue, customValue: typeValue === '(OTRO)' ? rawType : '', required: true })}
-    <div class="field"><label for="${prefix}-location-name">Nombre visible</label><input id="${prefix}-location-name" name="locationName" value="${escapeHtml(location.name || '')}" placeholder="Automático: OFICINA 01" /></div>
-    ${catalogField({ id: `${prefix}-building`, name: 'building', label: 'Edificio', customName: 'customBuilding', customLabel: 'Escribe el edificio', customId: `${prefix}-custom-building`, values: buildings(), selected: buildingValue, customValue: buildingValue === '(OTRO)' ? rawBuilding : '' })}
-    ${catalogField({ id: `${prefix}-floor`, name: 'floor', label: 'Piso', customName: 'customFloor', customLabel: 'Escribe el piso', customId: `${prefix}-custom-floor`, values: floors(), selected: floorValue, customValue: floorValue === '(OTRO)' ? rawFloor : '' })}`;
+    ${catalogField({ id: `${prefix}-space-type`, name: 'spaceType', label: 'Tipo de espacio', values: spaceTypes(), value: rawType, required: true })}
+    ${catalogField({ id: `${prefix}-building`, name: 'building', label: 'Edificio', values: buildings(), value: rawBuilding })}
+    ${catalogField({ id: `${prefix}-floor`, name: 'floor', label: 'Piso', values: floors(), value: rawFloor })}`;
 }
 
 function usersModule() {
@@ -261,7 +252,7 @@ function usersModule() {
   }).join('') || `<div class="empty-state"><div><h2>Aún no hay resguardantes</h2><p>Crea el primer resguardante y una ubicación para asignar bienes desde el inventario.</p></div></div>`;
   const areaReady = areas().length > 0;
   const importHelp = areaReady ? '' : `<div class="form-tip span-2">Aún no hay áreas en esta página. Carga aquí los listados Oracle o restaura un respaldo: los datos de otra ventana, navegador o dirección no se transfieren automáticamente.<div class="form-actions"><button class="btn secondary small" type="button" data-action="choose-import">${icon('upload')} Cargar listados ahora</button><input id="inventory-file" class="hidden" data-file="inventory" type="file" multiple accept=".xls,.xlsx,.xlsm,.csv,text/html" /></div></div>`;
-  return `<section class="module"><div class="two-column"><section class="form-panel"><h2>Nuevo resguardante</h2><p>El área se toma de los listados cargados. Los catálogos de ubicación conservan valores editables y aprenden los nuevos registros.</p><form id="user-form" class="form-grid"><div class="field span-2"><label for="user-name">Nombre completo</label><input id="user-name" name="name" required autocomplete="name" placeholder="Nombre de la persona responsable" /></div><div class="field span-2"><label for="user-area">Área</label><select id="user-area" name="area" required ${areaReady ? '' : 'disabled'}>${userAreaOptions()}</select>${areaReady ? '' : '<small class="field-hint">Carga un listado para habilitar las áreas detectadas.</small>'}</div>${importHelp}${locationFieldsMarkup('user')}<div class="field"><label for="user-photo-new">Foto del resguardante</label><input id="user-photo-new" name="userPhoto" type="file" accept="image/*" capture="user" /></div><div class="field"><label for="location-photo-new">Foto de la primera ubicación</label><input id="location-photo-new" name="locationPhoto" type="file" accept="image/*" capture="environment" /></div><div class="form-actions span-2"><button class="btn" type="submit" ${areaReady ? '' : 'disabled'}>${icon('add')} Crear resguardante</button></div></form></section><section class="module-panel"><div class="panel-heading"><div><h2>Resguardantes registrados</h2><p>${state.users.length} personas · ${state.users.reduce((count, user) => count + (user.locations || []).length, 0)} ubicaciones</p></div></div><div class="users-list">${rows}</div></section></div></section>`;
+  return `<section class="module"><div class="two-column"><section class="form-panel"><h2>Nuevo resguardante</h2><p>El área se toma de los listados cargados. En cada ubicación puedes elegir una sugerencia o escribir un valor personalizado.</p><form id="user-form" class="form-grid"><div class="field span-2"><label for="user-name">Nombre completo</label><input id="user-name" name="name" required autocomplete="name" placeholder="Nombre de la persona responsable" /></div><div class="field span-2"><label for="user-area">Área</label><select id="user-area" name="area" required ${areaReady ? '' : 'disabled'}>${userAreaOptions()}</select>${areaReady ? '' : '<small class="field-hint">Carga un listado para habilitar las áreas detectadas.</small>'}</div>${importHelp}${locationFieldsMarkup('user')}<div class="field"><label for="user-photo-new">Foto del resguardante</label><input id="user-photo-new" name="userPhoto" type="file" accept="image/*" capture="user" /></div><div class="field"><label for="location-photo-new">Foto de la primera ubicación</label><input id="location-photo-new" name="locationPhoto" type="file" accept="image/*" capture="environment" /></div><div class="form-actions span-2"><button class="btn" type="submit" ${areaReady ? '' : 'disabled'}>${icon('add')} Crear resguardante</button></div></form></section><section class="module-panel"><div class="panel-heading"><div><h2>Resguardantes registrados</h2><p>${state.users.length} personas · ${state.users.reduce((count, user) => count + (user.locations || []).length, 0)} ubicaciones</p></div></div><div class="users-list">${rows}</div></section></div></section>`;
 }
 
 function additionalModule() {
@@ -352,7 +343,7 @@ function openLocationEditor(userId, locationId = '') {
   clearModalObjectUrls();
   const location = (user.locations || []).find((entry) => entry.id === locationId);
   const editing = Boolean(location);
-  openModal(editing ? `Editar ${location.name}` : `Agregar ubicación a ${user.name}`, `<form id="location-form" class="form-grid" data-user-id="${user.id}" data-location-id="${location?.id || ''}">${locationFieldsMarkup('location-editor', location || {})}<p class="form-tip span-2">Si dejas vacío el nombre visible, se asignará automáticamente el siguiente consecutivo del tipo de espacio.</p></form>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn" type="submit" form="location-form">${editing ? 'Guardar ubicación' : 'Agregar ubicación'}</button>` });
+  openModal(editing ? `Editar ${location.name}` : `Agregar ubicación a ${user.name}`, `<form id="location-form" class="form-grid" data-user-id="${user.id}" data-location-id="${location?.id || ''}">${locationFieldsMarkup('location-editor', location || {})}<p class="form-tip span-2">El nombre se genera automáticamente con el siguiente consecutivo del tipo de espacio, por ejemplo, OFICINA 01.</p></form>`, { footer: `<button class="btn secondary" data-action="edit-user" data-id="${user.id}">Cancelar</button><button class="btn" type="submit" form="location-form">${editing ? 'Guardar ubicación' : 'Agregar ubicación'}</button>` });
 }
 
 function openLocationReassignment(sourceUserId, sourceLocationId) {
@@ -421,7 +412,6 @@ function demoData() {
 
 async function handleClick(event) {
   const target = event.target.closest('[data-action]'); if (!target) return; const action = target.dataset.action;
-  if (action === 'restore-catalog') { const select = $(`#${target.dataset.selectId}`); const custom = $(`#${target.dataset.customField}`); const input = $(`#${target.dataset.customInputId}`); if (input) { input.value = ''; input.required = false; } if (custom) custom.hidden = true; if (select) { select.hidden = false; select.value = ''; select.focus(); } return; }
   if (action === 'close-modal') { closeModal(); return; }
   if (action === 'nav') { activeModule = target.dataset.module; selected.clear(); render(); return; }
   if (action === 'logout') { state.auditor = null; await persist(); render(); return; }
@@ -480,7 +470,6 @@ async function handleClick(event) {
 }
 
 async function handleChange(event) {
-  if (event.target.matches('[data-custom-field]')) { const select = event.target; const field = $(`#${select.dataset.customField}`); const input = field?.querySelector('input'); const show = select.value === '(OTRO)'; select.hidden = show; if (field) field.hidden = !show; if (input) { input.required = show && select.name === 'spaceType'; if (show) input.focus(); else input.value = ''; } return; }
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
@@ -542,7 +531,7 @@ document.addEventListener('submit', async (event) => {
   if (event.target.id === 'user-form') {
     event.preventDefault(); const form = new FormData(event.target); const name = String(form.get('name')).replace(/\s+/g, ' ').trim(); const area = String(form.get('area')).trim(); if (!name || !area) return;
     const existing = state.users.find((user) => comparableName(user.name) === comparableName(name)); if (existing) { openDuplicateUserModal(existing, name); return; }
-    const user = { id: uuid(), name, area, photoKey: '', activeLocationId: '', locations: [] }; const location = locationValues(form, '', user.id); if (!location.type) { notify('Selecciona un tipo de espacio o captura uno en “(OTRO)”.', 'warning'); return; } user.locations = [location]; user.activeLocationId = location.id;
+    const user = { id: uuid(), name, area, photoKey: '', activeLocationId: '', locations: [] }; const location = locationValues(form, '', user.id); if (!location.type) { notify('Selecciona o escribe un tipo de espacio.', 'warning'); return; } user.locations = [location]; user.activeLocationId = location.id;
     const userPhoto = selectedPhoto(form, 'userPhoto'); const locationPhoto = selectedPhoto(form, 'locationPhoto'); if (!validPhoto(userPhoto) || !validPhoto(locationPhoto)) return;
     await mutate(() => { state.users.push(user); activateUserLocation(user.id, location.id); }, `Se registró a ${name} con ${location.name}.`);
     if (userPhoto) await saveUserPhotoFile(user.id, userPhoto);
@@ -558,7 +547,7 @@ document.addEventListener('submit', async (event) => {
   }
   if (event.target.id === 'location-form') {
     event.preventDefault(); const form = new FormData(event.target); const user = state.users.find((entry) => entry.id === event.target.dataset.userId); if (!user) return;
-    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId, user.id); if (!location.type) { notify('Selecciona un tipo de espacio o captura uno en “(OTRO)”.', 'warning'); return; } if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Usa otro nombre visible.`, 'warning'); return; }
+    const locationId = event.target.dataset.locationId; const previous = user.locations.find((entry) => entry.id === locationId); const location = locationValues(form, locationId, user.id); if (!location.type) { notify('Selecciona o escribe un tipo de espacio.', 'warning'); return; } if (userHasLocation(user, location.name, locationId)) { notify(`Ya existe una ubicación llamada ${location.name} para ${user.name}. Cambia el tipo de espacio.`, 'warning'); return; }
     if (previous) {
       const previousName = previous.name; location.photoKey = previous.photoKey || ''; let changed = 0;
       await mutate(() => { const current = state.users.find((entry) => entry.id === user.id); const target = current?.locations?.find((entry) => entry.id === previous.id); if (!target) return; Object.assign(target, location); changed = renameLocationReferences(user.id, previousName, location.name); activateUserLocation(user.id, location.id); }, `Se actualizó ${location.name}${changed ? ` y ${changed} bien${changed === 1 ? '' : 'es'} vinculado${changed === 1 ? '' : 's'}` : ''}.`);
