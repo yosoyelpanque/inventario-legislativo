@@ -37,7 +37,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .login-tip { margin-top: 18px !important; font-size: 13px; }
 
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
-.sidebar { display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; padding: 22px 14px 16px; color: #fff; background: var(--green-900); overflow-y: auto; }
+.sidebar { display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; padding: 22px 14px 16px; color: #fff; background: radial-gradient(ellipse 135% 230px at 50% -28px, rgba(5, 221, 128, .34) 0%, rgba(5, 221, 128, .16) 42%, transparent 76%), linear-gradient(180deg, #08775f 0%, var(--green-800) 34%, var(--green-900) 100%); overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 122px; padding: 5px 7px 24px; border-bottom: 2px solid rgba(196, 141, 92, .95); }
 .brand img { width: 65px; height: 72px; object-fit: cover; object-position: center top; }
 .brand-caption strong { display: block; color: #fff; font-size: 15px; line-height: .95; letter-spacing: .02em; text-transform: uppercase; }
