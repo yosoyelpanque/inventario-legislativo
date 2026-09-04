@@ -218,10 +218,13 @@ function inventoryModule() {
   const counts = statuses(); const all = filteredInventory(); const perPage = 15; const pages = Math.max(1, Math.ceil(all.length / perPage)); inventoryFilters.page = Math.min(inventoryFilters.page, pages);
   const items = all.slice((inventoryFilters.page - 1) * perPage, inventoryFilters.page * perPage);
   const selectAll = items.length && items.every((item) => selected.has(item.id));
+  const hasSelection = selected.size > 0;
+  const selectionDisabled = hasSelection ? '' : 'disabled';
+  const singleSelectionDisabled = selected.size === 1 ? '' : 'disabled';
   const areaOptions = areas().map((area) => `<option value="${escapeHtml(area)}" ${inventoryFilters.area === area ? 'selected' : ''}>${escapeHtml(area)} ${escapeHtml(state.areaNames[area] || '')}</option>`).join('');
   if (!state.inventory.length) return `<section class="module"><div class="module-panel empty-state">${icon('inventory')}<div><h2>El inventario está listo para recibir su primera fuente</h2><p>Importa los libros Oracle HTML, XLSX/XLSM o CSV. El lector identifica el área, el tipo de libro y conserva las claves con formato decimal.</p><button class="btn" data-action="choose-import">${icon('upload')} Cargar libros de inventario</button><button class="btn ghost" data-action="load-demo">Ver recorrido con datos de ejemplo</button><input id="inventory-file" class="hidden" data-file="inventory" type="file" multiple accept=".xls,.xlsx,.xlsm,.csv,text/html" /></div></div></section>`;
   const rows = items.map((item) => `<tr><td><input aria-label="Seleccionar ${escapeHtml(item.clave)}" class="check" type="checkbox" data-action="toggle-selection" data-id="${item.id}" ${selected.has(item.id) ? 'checked' : ''}></td><td class="mono">${escapeHtml(item.clave)}</td><td><button class="item-title btn ghost" data-action="detail" data-id="${item.id}">${escapeHtml(item.descripcion || 'Sin descripción')}</button><span class="item-meta">${escapeHtml([item.marca, item.modelo, item.serie].filter(Boolean).join(' · ') || 'Sin datos complementarios')}</span></td><td>${escapeHtml(item.area || '—')}</td><td>${escapeHtml(item.location || 'Pendiente')}</td><td><span class="status-pill ${item.status === 'ubicado' ? 'located' : 'pending'}">${item.status === 'ubicado' ? 'Ubicado' : 'Pendiente'}</span></td><td>${escapeHtml(personName(item.userId))}</td><td><button class="icon-button ellipsis" data-action="detail" data-id="${item.id}" aria-label="Abrir detalle">•••</button></td></tr>`).join('');
-  return `<section class="module"><div class="section-tabs"><button class="subtab active">Inventario</button><button class="subtab" data-action="set-status" data-status="pendiente">Pendientes por ubicar <span class="tag">${counts.pending}</span></button><button class="subtab" data-action="nav" data-module="notes">Historial</button></div><div class="content-grid"><section class="module-panel"><div class="filters"><div class="field search-field"><label for="inventory-search">Búsqueda global</label>${icon('search')}<input id="inventory-search" value="${escapeHtml(inventoryFilters.query)}" placeholder="Buscar clave, serie o descripción" /></div><div class="field"><label for="area-filter">Área</label><select id="area-filter"><option value="">Todas las áreas</option>${areaOptions}</select></div><div class="field"><label for="status-filter">Estatus</label><select id="status-filter"><option value="">Todos los estatus</option><option value="ubicado" ${inventoryFilters.status === 'ubicado' ? 'selected' : ''}>Ubicado</option><option value="pendiente" ${inventoryFilters.status === 'pendiente' ? 'selected' : ''}>Pendiente</option></select></div><button class="filter-clear" data-action="clear-filters">Limpiar</button></div><div class="bulkbar"><label class="selected-count"><input class="check" type="checkbox" data-action="toggle-page" ${selectAll ? 'checked' : ''}> <b>${selected.size}</b> seleccionados</label><button class="btn secondary small" data-action="assign">${icon('inventory')} Asignar ubicación</button><button class="btn secondary small" data-action="retag">Re-etiquetar</button><button class="btn secondary small" data-action="bulk-note">${icon('notes')} Nota</button><button class="btn secondary small" data-action="scan">${icon('qr')} Escanear QR</button><button class="btn small" data-action="choose-import">${icon('upload')} Cargar libros</button><input id="inventory-file" class="hidden" data-file="inventory" type="file" multiple accept=".xls,.xlsx,.xlsm,.csv,text/html" /></div><div class="table-wrap"><table class="inventory-table"><thead><tr><th></th><th>Clave</th><th>Descripción</th><th>Área</th><th>Ubicación</th><th>Estatus</th><th>Resguardante</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="8"><div class="empty-state"><div><h2>Sin coincidencias</h2><p>Ajusta la búsqueda o limpia los filtros para ver los bienes cargados.</p></div></div></td></tr>`}</tbody></table></div><div class="table-footer"><span>Mostrando ${items.length ? (inventoryFilters.page - 1) * perPage + 1 : 0}–${Math.min(inventoryFilters.page * perPage, all.length)} de ${all.length} resultados</span><nav class="pager"><button class="page-button" data-action="page" data-page="${inventoryFilters.page - 1}" ${inventoryFilters.page === 1 ? 'disabled' : ''}>‹</button><button class="page-button active">${inventoryFilters.page}</button><button class="page-button" data-action="page" data-page="${inventoryFilters.page + 1}" ${inventoryFilters.page === pages ? 'disabled' : ''}>›</button></nav></div></section>${summaryAside(counts)}</div></section>`;
+  return `<section class="module"><div class="section-tabs"><button class="subtab active">Inventario</button><button class="subtab" data-action="set-status" data-status="pendiente">Pendientes por ubicar <span class="tag">${counts.pending}</span></button><button class="subtab" data-action="nav" data-module="notes">Historial</button></div><div class="content-grid"><section class="module-panel"><div class="filters"><div class="field search-field"><label for="inventory-search">Búsqueda global</label>${icon('search')}<input id="inventory-search" value="${escapeHtml(inventoryFilters.query)}" placeholder="Buscar clave, serie o descripción" /></div><div class="field"><label for="area-filter">Área</label><select id="area-filter"><option value="">Todas las áreas</option>${areaOptions}</select></div><div class="field"><label for="status-filter">Estatus</label><select id="status-filter"><option value="">Todos los estatus</option><option value="ubicado" ${inventoryFilters.status === 'ubicado' ? 'selected' : ''}>Ubicado</option><option value="pendiente" ${inventoryFilters.status === 'pendiente' ? 'selected' : ''}>Pendiente</option></select></div><button class="filter-clear" data-action="clear-filters">Limpiar</button></div><div class="bulkbar"><label class="selected-count"><input class="check" type="checkbox" data-action="toggle-page" ${selectAll ? 'checked' : ''}> <b>${selected.size}</b> seleccionados</label><button class="btn secondary small" data-action="locate-active" ${selectionDisabled}>${icon('pin')} Ubicar</button><button class="btn secondary small" data-action="retag-active" ${selectionDisabled}>${icon('warning')} Re-etiquetar</button><button class="btn secondary small" data-action="unassign-items" ${selectionDisabled}>${icon('close')} Quitar</button><button class="btn secondary small" data-action="bulk-note" ${selectionDisabled}>${icon('notes')} Nota</button><button class="btn secondary small" data-action="bulk-photo" ${singleSelectionDisabled}>${icon('camera')} Foto</button><button class="btn secondary small" data-action="scan">${icon('qr')} Escanear QR</button><button class="btn small" data-action="choose-import">${icon('upload')} Cargar libros</button><input id="inventory-file" class="hidden" data-file="inventory" type="file" multiple accept=".xls,.xlsx,.xlsm,.csv,text/html" /></div><div class="table-wrap"><table class="inventory-table"><thead><tr><th></th><th>Clave</th><th>Descripción</th><th>Área</th><th>Ubicación</th><th>Estatus</th><th>Resguardante</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="8"><div class="empty-state"><div><h2>Sin coincidencias</h2><p>Ajusta la búsqueda o limpia los filtros para ver los bienes cargados.</p></div></div></td></tr>`}</tbody></table></div><div class="table-footer"><span>Mostrando ${items.length ? (inventoryFilters.page - 1) * perPage + 1 : 0}–${Math.min(inventoryFilters.page * perPage, all.length)} de ${all.length} resultados</span><nav class="pager"><button class="page-button" data-action="page" data-page="${inventoryFilters.page - 1}" ${inventoryFilters.page === 1 ? 'disabled' : ''}>‹</button><button class="page-button active">${inventoryFilters.page}</button><button class="page-button" data-action="page" data-page="${inventoryFilters.page + 1}" ${inventoryFilters.page === pages ? 'disabled' : ''}>›</button></nav></div></section>${summaryAside(counts)}</div></section>`;
 }
 
 function summaryAside(counts) {
@@ -426,7 +429,8 @@ async function showDetail(id, additional = false) {
   clearModalObjectUrls();
   const user = state.users.find((entry) => entry.id === item.userId); const photo = item.photoKey ? await storage.photo(item.photoKey) : null; const photoUrl = modalPhotoUrl(photo);
   const fields = additional ? [['Clave', item.clave], ['Descripción', item.descripcion], ['Marca', item.marca], ['Modelo', item.modelo], ['Serie', item.serie], ['Posesión', item.possession], ['Personal', item.personal ? 'Sí' : 'No'], ['Resguardante', user?.name || 'Sin asignar'], ['Ubicación', item.location || 'Sin asignar'], ['Dato complementario', item.detail || '—']] : [['Clave única', item.clave], ['Descripción', item.descripcion], ['Marca', item.marca], ['Modelo', item.modelo], ['Serie', item.serie || '—'], ['Área', `${item.area} ${item.areaName}`], ['Tipo de libro', item.bookType || '—'], ['Estatus', item.status], ['Resguardante', user?.name || 'Sin asignar'], ['Ubicación', item.location || 'Sin asignar'], ['Re-etiquetado', item.retag ? 'Sí' : 'No'], ['Actualizado', localDate(item.updatedAt)]];
-  openModal(additional ? 'Detalle de bien adicional' : 'Detalle de bien', `<div class="detail-grid">${fields.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div><div class="modal-photo">${photoUrl ? `<img src="${photoUrl}" alt="Evidencia del bien" />` : `<span>Sin evidencia fotográfica</span>`}</div><input id="photo-input" class="hidden" type="file" accept="image/*" capture="environment" data-item="${id}" data-additional="${additional}">`, { wide: true, footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button class="btn secondary" data-action="choose-photo">${icon('camera')} ${photo ? 'Reemplazar foto' : 'Agregar foto'}</button>${additional ? '' : `<button class="btn" data-action="open-assign" data-id="${id}">Asignar ubicación</button>`}` });
+  const inventoryActions = `<button class="btn secondary small" data-action="detail-locate" data-id="${id}">${icon('pin')} Ubicar</button><button class="btn secondary small" data-action="detail-retag" data-id="${id}">${icon('warning')} Re-etiquetar</button><button class="btn secondary small" data-action="detail-unassign" data-id="${id}">${icon('close')} Quitar</button><button class="btn secondary small" data-action="detail-note" data-id="${id}">${icon('notes')} Nota</button>`;
+  openModal(additional ? 'Detalle de bien adicional' : 'Detalle de bien', `<div class="detail-grid">${fields.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div><div class="modal-photo">${photoUrl ? `<img src="${photoUrl}" alt="Evidencia del bien" />` : `<span>Sin evidencia fotográfica</span>`}</div><p class="photo-watermark">${icon('camera')} Las fotos se guardan con la clave única como marca de agua.</p><input id="photo-input" class="hidden" type="file" accept="image/*" capture="environment" data-item="${id}" data-additional="${additional}">`, { wide: true, footer: `${additional ? '' : inventoryActions}<button class="btn secondary" data-action="choose-photo">${icon('camera')} ${photo ? 'Reemplazar foto' : 'Foto'}</button><button class="btn secondary" data-action="close-modal">Cerrar</button>` });
 }
 
 async function applyInventoryAssignment(ids, userId, location, reassignment = false) {
@@ -439,6 +443,57 @@ async function applyInventoryAssignment(ids, userId, location, reassignment = fa
     selected.clear();
   }, `Se ${reassignment ? 'reubicaron' : 'asignaron'} ${targets.length} bien${targets.length === 1 ? '' : 'es'} a ${personName(userId)}.`);
   closeModal();
+}
+
+function activeInventoryContext() {
+  const user = getActiveUser();
+  const location = user ? activeLocationFor(user.id) : null;
+  if (!user || !location) { notify('Activa un resguardante y una de sus ubicaciones antes de ubicar bienes.', 'warning'); return null; }
+  return { user, location };
+}
+
+async function applyActiveInventoryLocation(ids, retag = false) {
+  const targets = ids.map((id) => state.inventory.find((item) => item.id === id)).filter(Boolean);
+  const context = activeInventoryContext();
+  if (!targets.length || !context) { if (!targets.length) notify('Los bienes seleccionados ya no están disponibles.', 'warning'); return; }
+  await mutate(() => {
+    targets.forEach((item) => Object.assign(item, { userId: context.user.id, location: context.location.name, status: 'ubicado', retag, updatedAt: Date.now() }));
+    activateUserLocation(context.user.id, context.location.id);
+    selected.clear();
+  }, retag
+    ? `Se ubicaron ${targets.length} bien${targets.length === 1 ? '' : 'es'} con ${context.user.name} y quedaron pendientes por re-etiquetar.`
+    : `Se ubicaron ${targets.length} bien${targets.length === 1 ? '' : 'es'} con ${context.user.name} en ${context.location.name}.`);
+  closeModal();
+}
+
+async function unassignInventoryItems(ids) {
+  const targets = ids.map((id) => state.inventory.find((item) => item.id === id)).filter(Boolean);
+  if (!targets.length) { notify('Los bienes seleccionados ya no están disponibles.', 'warning'); return; }
+  await mutate(() => {
+    targets.forEach((item) => Object.assign(item, { userId: '', location: '', status: 'pendiente', retag: false, updatedAt: Date.now() }));
+    selected.clear();
+  }, `Se dejaron sin ubicar ${targets.length} bien${targets.length === 1 ? '' : 'es'}.`);
+  closeModal();
+}
+
+function openActiveReassignmentConfirm(ids, retag, locatedItems) {
+  const context = activeInventoryContext();
+  if (!context) return;
+  const first = locatedItems[0];
+  const detail = locatedItems.length === 1
+    ? `El bien ${first.clave} ya está ubicado con ${personName(first.userId)} en ${first.location || 'una ubicación sin especificar'}. ¿Deseas reubicarlo con ${context.user.name} en ${context.location.name}?`
+    : `${locatedItems.length} de los bienes seleccionados ya están ubicados. ¿Deseas reubicarlos con ${context.user.name} en ${context.location.name}?`;
+  openModal('Bien ya ubicado', `<p style="margin:0;color:var(--muted);line-height:1.55">${escapeHtml(detail)}</p>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn" data-action="confirm-active-reassign" data-ids="${ids.join(',')}" data-retag="${retag}">Sí, reubicar</button>` });
+}
+
+async function locateSelectedWithActiveContext(retag = false, ids = [...selected]) {
+  const targets = ids.map((id) => state.inventory.find((item) => item.id === id)).filter(Boolean);
+  if (!targets.length) { notify('Selecciona al menos un bien.', 'warning'); return; }
+  const context = activeInventoryContext();
+  if (!context) return;
+  const located = targets.filter((item) => item.status === 'ubicado');
+  if (located.length) { openActiveReassignmentConfirm(ids, retag, located); return; }
+  await applyActiveInventoryLocation(ids, retag);
 }
 
 function openReassignmentConfirm(ids, userId, location, locatedItems) {
@@ -463,7 +518,32 @@ function updateAssignLocations() { const userId = $('#assign-user')?.value; cons
 function openNote(ids = [...selected]) {
   const itemIds = ids.filter((id) => state.inventory.some((item) => item.id === id));
   if (!itemIds.length) { notify('Selecciona al menos un bien para agregar una nota.', 'warning'); return; }
+  if (itemIds.length === 1) { openGuidedNote(itemIds[0]); return; }
   openModal('Agregar observación', `<div class="field"><label for="note-title">Asunto</label><input id="note-title" placeholder="Ej. Dato por verificar" /></div><div class="field" style="margin-top:14px"><label for="note-text">Nota</label><textarea id="note-text" rows="5" required placeholder="Describe la observación de campo..."></textarea></div>`, { footer: `<button class="btn secondary" data-action="close-modal">Cancelar</button><button class="btn" data-action="commit-note" data-ids="${itemIds.join(',')}">Guardar nota</button>` });
+}
+
+function openGuidedNote(id) {
+  const item = state.inventory.find((entry) => entry.id === id);
+  if (!item) { notify('El bien ya no está disponible.', 'warning'); return; }
+  const observed = [['Descripción', item.descripcion || 'Sin descripción'], ['Color', item.color || 'Sin dato'], ['Marca', item.marca || 'Sin marca'], ['Modelo', item.modelo || 'Sin modelo'], ['Serie', item.serie || 'Sin serie']];
+  const correctionFields = [['Descripción nueva', 'note-description', 'text'], ['Color nuevo', 'note-color', 'text'], ['Marca nueva', 'note-brand', 'text'], ['Modelo nuevo', 'note-model', 'text'], ['Serie nueva', 'note-serie', 'text']];
+  openModal('Nota del bien', `<section class="note-review"><p>Estás viendo los datos registrados para el bien <strong>${escapeHtml(item.clave)}</strong>. ¿Corresponden con lo observado?</p><div class="detail-grid">${observed.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div></section><div class="field note-answer"><label for="note-verification">Verificación en campo</label><select id="note-verification"><option value="">Selecciona una respuesta</option><option value="correct">Sí, los datos corresponden</option><option value="correction">No, registrar correcciones</option></select></div><div id="note-corrections" class="note-corrections" hidden><p class="form-tip">Registra únicamente los datos que difieren. Esta información se conserva como nota y no modifica el listado original.</p><div class="form-grid">${correctionFields.map(([label, name, type]) => `<div class="field"><label for="${name}">${label}</label><input id="${name}" type="${type}" /></div>`).join('')}<div class="field span-2"><label for="note-other">Otra observación</label><textarea id="note-other" rows="3" placeholder="Escribe una observación específica..."></textarea></div></div></div>`, { wide: true, footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button id="save-guided-note" class="btn" data-action="commit-guided-note" data-id="${id}" disabled>Continuar</button>` });
+}
+
+function updateGuidedNote() {
+  const answer = $('#note-verification')?.value;
+  const corrections = $('#note-corrections');
+  const button = $('#save-guided-note');
+  if (corrections) corrections.hidden = answer !== 'correction';
+  if (!button) return;
+  button.disabled = !answer;
+  button.textContent = answer === 'correction' ? 'Guardar nota' : 'Continuar';
+}
+
+function openPhotoCapture(id) {
+  const item = state.inventory.find((entry) => entry.id === id);
+  if (!item) { notify('El bien ya no está disponible.', 'warning'); return; }
+  openModal('Foto del bien', `<p class="page-subtitle">Toma una foto o selecciónala desde la galería. La clave única <strong>${escapeHtml(item.clave)}</strong> se incrustará como marca de agua antes de guardarla.</p><div class="modal-photo"><span>${icon('camera')} Aún no hay una imagen seleccionada</span></div><input id="photo-input" class="hidden" type="file" accept="image/*" capture="environment" data-item="${id}" data-additional="false">`, { footer: `<button class="btn secondary" data-action="close-modal">Cerrar</button><button class="btn" data-action="choose-photo">${icon('camera')} Tomar o subir foto</button>` });
 }
 
 function openStandaloneNote() {
@@ -503,10 +583,19 @@ async function handleClick(event) {
   if (action === 'open-assign') { openAssign([target.dataset.id]); return; }
   if (action === 'commit-assign') { const userId = $('#assign-user').value; const location = $('#assign-location').value; const ids = target.dataset.ids.split(','); if (!userId || !location) { notify('Selecciona resguardante y ubicación.', 'warning'); return; } const locatedItems = ids.map((id) => state.inventory.find((item) => item.id === id)).filter((item) => item?.status === 'ubicado'); if (locatedItems.length) { openReassignmentConfirm(ids, userId, location, locatedItems); return; } await applyInventoryAssignment(ids, userId, location); return; }
   if (action === 'confirm-reassign') { await applyInventoryAssignment(target.dataset.ids.split(','), target.dataset.userId, target.dataset.location, true); return; }
-  if (action === 'retag') { const ids = [...selected]; if (!ids.length) { notify('Selecciona bienes para marcarlos para re-etiquetado.', 'warning'); return; } await mutate(() => ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) item.retag = true; }), `Se marcaron ${ids.length} bien${ids.length === 1 ? '' : 'es'} para re-etiquetado.`); return; }
+  if (action === 'locate-active') { await locateSelectedWithActiveContext(false); return; }
+  if (action === 'retag-active') { await locateSelectedWithActiveContext(true); return; }
+  if (action === 'unassign-items') { await unassignInventoryItems([...selected]); return; }
+  if (action === 'confirm-active-reassign') { await applyActiveInventoryLocation(target.dataset.ids.split(','), target.dataset.retag === 'true'); return; }
+  if (action === 'detail-locate') { await locateSelectedWithActiveContext(false, [target.dataset.id]); return; }
+  if (action === 'detail-retag') { await locateSelectedWithActiveContext(true, [target.dataset.id]); return; }
+  if (action === 'detail-unassign') { await unassignInventoryItems([target.dataset.id]); return; }
+  if (action === 'detail-note') { openGuidedNote(target.dataset.id); return; }
   if (action === 'bulk-note') { openNote(); return; }
+  if (action === 'bulk-photo') { const ids = [...selected].filter((id) => state.inventory.some((item) => item.id === id)); if (ids.length !== 1) { notify('Selecciona un solo bien para agregar una foto.', 'warning'); return; } openPhotoCapture(ids[0]); return; }
   if (action === 'new-note') { openStandaloneNote(); return; }
-  if (action === 'commit-note') { const text = $('#note-text').value.trim(); const title = $('#note-title').value.trim(); const ids = target.dataset.ids.split(','); if (!text) { notify('Escribe una observación.', 'warning'); return; } await mutate(() => { ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) state.notes.push({ id: uuid(), itemId: id, clave: item.clave, title, text, author: state.auditor.name, createdAt: Date.now() }); }); selected.clear(); }, `Se agregaron ${ids.length} observación${ids.length === 1 ? '' : 'es'} de inventario.`); closeModal(); return; }
+  if (action === 'commit-note') { const text = $('#note-text').value.trim(); const title = $('#note-title').value.trim(); const ids = target.dataset.ids.split(','); if (!text) { notify('Escribe una observación.', 'warning'); return; } await mutate(() => { ids.forEach((id) => { const item = state.inventory.find((entry) => entry.id === id); if (item) state.notes.push({ id: uuid(), itemId: id, clave: item.clave, title, text, author: state.auditor.name, createdAt: Date.now() }); }); selected.clear(); }, `Se agregaron ${ids.length} observación${ids.length === 1 ? '' : 'es'} de inventario.`); $('#note-title').value = ''; $('#note-text').value = ''; return; }
+  if (action === 'commit-guided-note') { const item = state.inventory.find((entry) => entry.id === target.dataset.id); const answer = $('#note-verification')?.value; if (!item || !answer) { notify('Selecciona si los datos corresponden.', 'warning'); return; } if (answer === 'correct') { await showDetail(item.id); return; } const changes = [['Descripción nueva', $('#note-description')?.value], ['Color nuevo', $('#note-color')?.value], ['Marca nueva', $('#note-brand')?.value], ['Modelo nuevo', $('#note-model')?.value], ['Serie nueva', $('#note-serie')?.value]].filter(([, value]) => String(value || '').trim()).map(([label, value]) => `${label}: ${String(value).trim()}`); const other = $('#note-other')?.value.trim(); if (other) changes.push(`Otra observación: ${other}`); if (!changes.length) { notify('Escribe al menos una corrección u observación.', 'warning'); return; } await mutate(() => state.notes.push({ id: uuid(), itemId: item.id, clave: item.clave, title: 'Corrección de datos', text: changes.join('\n'), author: state.auditor.name, createdAt: Date.now() }), `Se agregó una nota de corrección a ${item.clave}.`); await showDetail(item.id); return; }
   if (action === 'commit-note-picker') { const text = $('#note-text').value.trim(); const title = $('#note-title').value.trim(); const id = $('#note-item').value; const item = state.inventory.find((entry) => entry.id === id); if (!text || !item) { notify('Selecciona un bien y escribe una observación.', 'warning'); return; } await mutate(() => state.notes.push({ id: uuid(), itemId: id, clave: item.clave, title, text, author: state.auditor.name, createdAt: Date.now() }), 'Se agregó una observación de inventario.'); closeModal(); return; }
   if (action === 'edit-user') { await openUserEditor(target.dataset.id); return; }
   if (action === 'add-location') { openLocationEditor(target.dataset.userId); return; }
@@ -562,6 +651,7 @@ async function handleChange(event) {
   if (event.target.id === 'area-filter') { inventoryFilters.area = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'status-filter') { inventoryFilters.status = event.target.value; inventoryFilters.page = 1; render(); return; }
   if (event.target.id === 'assign-user') { updateAssignLocations(); return; }
+  if (event.target.id === 'note-verification') { updateGuidedNote(); return; }
   if (event.target.id === 'relocate-user' || event.target.id === 'relocate-disposition') { updateLocationReassignmentOptions(); return; }
   if (event.target.id === 'delete-user-target' || event.target.id === 'delete-user-disposition') { updateUserDeletionDestinations(); return; }
   if (event.target.matches('[data-user-location-select]')) { const userId = event.target.dataset.userId; const locationId = event.target.value; const location = locationsFor(userId).find((entry) => entry.id === locationId); if (!location) return; await mutate(() => activateUserLocation(userId, locationId), `Se dejó ${location.name} como ubicación activa de ${personName(userId)}.`); return; }
@@ -683,7 +773,56 @@ function mergeBackup(incoming) {
 function exportConciliation() { if (!conciliation) return; const rows = [['Tipo', 'Clave', 'Descripción', 'Detalle'], ...conciliation.additions.map((item) => ['ALTA', item.clave, item.descripcion, 'Nuevo registro']), ...conciliation.removals.map((item) => ['BAJA', item.clave, item.descripcion, 'No apareció en el nuevo corte']), ...conciliation.modified.map(({ old, next, fields }) => ['MODIFICADO', old.clave, next.descripcion, fields.join(', ')])]; const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n'); downloadBlob(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }), `Conciliacion_${new Date().toISOString().slice(0, 10)}.csv`); notify('Resumen de conciliación exportado.'); }
 function exportRetag() { const rows = state.inventory.filter((item) => item.retag); const csv = [['Clave única', 'Descripción', 'Usuario', 'Ubicación'], ...rows.map((item) => [item.clave, item.descripcion, personName(item.userId), item.location])].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n'); downloadBlob(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }), `Reetiquetado_${new Date().toISOString().slice(0, 10)}.csv`); notify('Lista de re-etiquetado exportada.'); }
 
-async function savePhoto(input) { const file = input.files?.[0]; if (!file) return; if (file.size > 8 * 1024 * 1024) { notify('La fotografía supera el límite de 8 MB.', 'warning'); return; } const additional = input.dataset.additional === 'true'; const items = additional ? state.additionalItems : state.inventory; const item = items.find((entry) => entry.id === input.dataset.item); if (!item) return; const key = item.photoKey || `${additional ? 'additional' : 'inventory'}-${item.id}`; await storage.savePhoto(key, file); await mutate(() => { item.photoKey = key; item.updatedAt = Date.now(); }, `Se agregó evidencia fotográfica a ${item.clave}.`); closeModal(); await showDetail(item.id, additional); }
+async function watermarkedPhoto(file, clave) {
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const preview = new Image();
+      preview.onload = () => resolve(preview);
+      preview.onerror = () => reject(new Error('No fue posible procesar esta imagen.'));
+      preview.src = sourceUrl;
+    });
+    const maxSide = 1800;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('El navegador no pudo preparar la imagen.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const fontSize = Math.max(22, Math.round(Math.min(canvas.width, canvas.height) * 0.045));
+    const label = `CLAVE ÚNICA: ${clave}`;
+    context.font = `800 ${fontSize}px system-ui, sans-serif`;
+    const padding = Math.round(fontSize * 0.65);
+    const labelWidth = Math.ceil(context.measureText(label).width);
+    const labelHeight = fontSize + padding * 2;
+    context.fillStyle = 'rgba(0, 37, 32, 0.74)';
+    context.fillRect(Math.max(0, canvas.width - labelWidth - padding * 2), Math.max(0, canvas.height - labelHeight), Math.min(canvas.width, labelWidth + padding * 2), labelHeight);
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'right';
+    context.textBaseline = 'bottom';
+    context.fillText(label, canvas.width - padding, canvas.height - padding);
+    const blob = await new Promise((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('No fue posible guardar la imagen.')), 'image/jpeg', 0.9));
+    return new File([blob], `evidencia-${String(clave).replace(/[^a-z0-9._-]/gi, '_')}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function savePhoto(input) {
+  const file = input.files?.[0];
+  if (!file || !validPhoto(file)) return;
+  const additional = input.dataset.additional === 'true';
+  const items = additional ? state.additionalItems : state.inventory;
+  const item = items.find((entry) => entry.id === input.dataset.item);
+  if (!item) return;
+  let stamped;
+  try { stamped = await watermarkedPhoto(file, item.clave); } catch (error) { notify(error.message || 'No fue posible procesar la imagen.', 'error'); return; }
+  const key = item.photoKey || `${additional ? 'additional' : 'inventory'}-${item.id}`;
+  await storage.savePhoto(key, stamped);
+  await mutate(() => { item.photoKey = key; item.updatedAt = Date.now(); }, `Se agregó evidencia fotográfica con clave visible a ${item.clave}.`);
+  closeModal();
+}
 async function saveLayoutPlan(file) { const user = state.users.find((entry) => entry.id === layoutUserId); if (!user || !file) return; if (file.size > 8 * 1024 * 1024) { notify('El plano supera el límite de 8 MB.', 'warning'); return; } const key = `layout-${user.id}`; await storage.savePhoto(key, file); await mutate(() => { state.layouts ||= {}; const current = state.layouts[user.id] || { pins: {} }; state.layouts[user.id] = { ...current, planKey: key }; }, `Se cargó el plano de referencia de ${user.name}.`); }
 
 async function openScanner() {
@@ -706,7 +845,7 @@ async function init() {
   window.addEventListener('appinstalled', () => { installPrompt = null; if (state?.auditor) { render(); notify('La aplicación se instaló correctamente.'); } });
   window.addEventListener('online', () => { if (state?.auditor) { render(); notify('Conexión recuperada. Tus datos siguen guardados solo en este dispositivo.'); } });
   window.addEventListener('offline', () => { if (state?.auditor) { render(); notify('Sin conexión: puedes seguir trabajando con los datos locales.', 'warning'); } });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=22').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=23').catch(() => {});
   render();
 }
 init().catch((error) => { console.error(error); app.innerHTML = `<main class="login-page"><section class="login-card"><h1>No se pudo abrir la sesión local</h1><p>${escapeHtml(error.message)}</p></section></main>`; });
