@@ -20,7 +20,7 @@ Después abre la URL local mostrada por el servidor e ingresa un nombre para la 
 - Tabla de inventario de alta densidad con búsqueda instantánea, filtros, selección masiva, asignación de resguardante/ubicación, re-etiquetado, notas, evidencia fotográfica y deshacer en la sesión.
 - Gestión de resguardantes y nomenclatura de ubicaciones consecutivas globales.
 - Croquis local por resguardante: pines reubicables para cada ubicación, resumen de bienes asignados y carga opcional de un plano de referencia PNG/JPEG/WebP. Las posiciones viajan en el respaldo; la imagen permanece en el almacenamiento local por privacidad.
-- Altas de bienes adicionales, claves `CD-ÁREA-NNN`, detección de series duplicadas y perfiles de autollenado por expresión regular.
+- Altas de bienes adicionales, claves `CD-ÁREA-NNN`, detección de series duplicadas y perfiles de autorrelleno por expresión regular.
 - Reportes imprimibles, conciliación con vista previa de altas/bajas/modificados, exportación Excel compatible y CSV de re-etiquetado.
 - Respaldos ZIP, restauración controlada, fusión de sesiones y datos/fotos persistidos localmente en IndexedDB.
 - Escáner QR con la API nativa del navegador cuando está disponible; solicita permiso de cámara solo al activarlo.
@@ -32,3 +32,4 @@ La app es deliberadamente local-first: no transmite inventario ni fotografías a
 ## Publicación en GitHub Pages
 
 El repositorio incluye un flujo de GitHub Actions para publicar la aplicación en GitHub Pages al hacer `push` a `main`. La publicación es estática: la sesión, inventario, fotos y respaldos que cree cada persona permanecen únicamente en su navegador.
+
